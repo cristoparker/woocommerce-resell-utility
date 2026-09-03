@@ -1,0 +1,92 @@
+/**
+ * Market & Reseller Price Display - Frontend Styles
+ *
+ * Scoped and prefixed styles to ensure robust, conflict-free rendering
+ * across all WooCommerce themes and builders.
+ */
+
+/* Main Price Container */
+.rpd-product-prices {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0.35em 0;
+	line-height: 1.3;
+	text-align: inherit;
+}
+
+/* Ensure strikethrough from parent theme styles is never applied */
+.rpd-product-prices,
+.rpd-product-prices *,
+.woocommerce ul.products li.product .price .rpd-product-prices,
+.woocommerce ul.products li.product .price .rpd-product-prices *,
+.woocommerce div.product p.price .rpd-product-prices,
+.woocommerce div.product p.price .rpd-product-prices *,
+.woocommerce div.product .woocommerce-variation-price .rpd-product-prices,
+.woocommerce div.product .woocommerce-variation-price .rpd-product-prices * {
+	text-decoration: none !important;
+}
+
+/* Market Price Row (Regular Price) */
+.rpd-product-prices .rpd-market-price {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 0.875em;
+	color: #64748b;
+	font-weight: 400;
+}
+
+.rpd-product-prices .rpd-market-price .rpd-price-label {
+	color: #64748b;
+	font-weight: 500;
+	font-size: 0.95em;
+	letter-spacing: -0.01em;
+}
+
+.rpd-product-prices .rpd-market-price .rpd-price-value,
+.rpd-product-prices .rpd-market-price .rpd-price-value .woocommerce-Price-amount,
+.rpd-product-prices .rpd-market-price .rpd-price-value .woocommerce-Price-currencySymbol {
+	color: #475569;
+	font-weight: 500;
+	text-decoration: none !important;
+}
+
+/* Reseller Price Row (Sale Price) */
+.rpd-product-prices .rpd-reseller-price {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 1.15em;
+	color: #0f172a;
+	font-weight: 700;
+	margin-top: 1px;
+}
+
+.rpd-product-prices .rpd-reseller-price .rpd-price-label {
+	color: #1e293b;
+	font-weight: 600;
+	font-size: 0.9em;
+	letter-spacing: -0.01em;
+}
+
+.rpd-product-prices .rpd-reseller-price .rpd-price-value,
+.rpd-product-prices .rpd-reseller-price .rpd-price-value .woocommerce-Price-amount,
+.rpd-product-prices .rpd-reseller-price .rpd-price-value .woocommerce-Price-currencySymbol {
+	color: #0f172a;
+	font-weight: 700;
+}
+
+/* Variation and Single Product Container adjustments */
+.woocommerce-variation-price .rpd-product-prices {
+	margin: 0.5em 0;
+}
+
+/* Theme compatibility: center alignment for centered product grids */
+.text-center .rpd-product-prices,
+.has-text-align-center .rpd-product-prices,
+.product-type-simple.text-center .rpd-product-prices {
+	align-items: center;
+}
