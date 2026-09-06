@@ -82,6 +82,7 @@ final class WooCommerce_Resell_Utility {
 	 */
 	private function includes() {
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-settings.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-product-fields.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-price-display.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-fields.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-buy-now.php';
@@ -110,6 +111,7 @@ final class WooCommerce_Resell_Utility {
 		);
 
 		// Initialize all sub-modules.
+		WRU_Product_Fields::init();
 		WRU_Price_Display::init();
 		WRU_Reseller_Fields::init();
 		WRU_Buy_Now::init();

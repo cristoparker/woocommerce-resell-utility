@@ -303,3 +303,14 @@
 	border-top: 1px solid #e2e8f0;
 }
 
+/* Custom Order Statuses in WooCommerce Admin */
+mark.order-status.status-wc-packed {
+	background: #eff6ff !important;
+	color: #1d4ed8 !important;
+}
+
+mark.order-status.status-wc-shipped {
+	background: #f5f3ff !important;
+	color: #6d28d9 !important;
+}
+

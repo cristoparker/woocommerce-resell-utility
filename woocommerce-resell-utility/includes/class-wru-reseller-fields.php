@@ -45,7 +45,8 @@ class WRU_Reseller_Fields {
 		}
 
 		$wholesale_price = (float) $product->get_price();
-		$packaging_fee   = WRU_Settings::get_packaging_fee();
+		$packaging_fee   = WRU_Product_Fields::get_packaging_fee( $product );
+		$custom_shipping = WRU_Product_Fields::get_shipping_charge( $product );
 		$currency_symbol = get_woocommerce_currency_symbol();
 		$min_price       = WRU_Settings::is_min_price_enforced() ? $wholesale_price : 0;
 		?>
@@ -53,6 +54,7 @@ class WRU_Reseller_Fields {
 			data-product-id="<?php echo esc_attr( $product->get_id() ); ?>"
 			data-base-price="<?php echo esc_attr( $wholesale_price ); ?>"
 			data-packaging-fee="<?php echo esc_attr( $packaging_fee ); ?>"
+			data-custom-shipping="<?php echo esc_attr( null !== $custom_shipping ? $custom_shipping : '' ); ?>"
 			data-currency-symbol="<?php echo esc_attr( $currency_symbol ); ?>">
 			
 			<div class="wru-box-header">

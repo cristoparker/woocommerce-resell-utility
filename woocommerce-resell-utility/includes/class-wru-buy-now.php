@@ -104,7 +104,7 @@ class WRU_Buy_Now {
 
 		$product_id      = $product->get_id();
 		$wholesale_price = (float) $product->get_price();
-		$packaging_fee   = WRU_Settings::get_packaging_fee();
+		$packaging_fee   = WRU_Product_Fields::get_packaging_fee( $product );
 		$product_url     = get_permalink( $product_id );
 		$is_simple       = $product->is_type( 'simple' );
 

@@ -1105,6 +1105,16 @@
 	color: #b91c1c;
 }
 
+.wru-status-packed {
+	background: #eff6ff;
+	color: #1d4ed8;
+}
+
+.wru-status-shipped {
+	background: #f5f3ff;
+	color: #6d28d9;
+}
+
 .wru-view-order-btn {
 	padding: 5px 12px !important;
 	font-size: 0.8rem !important;

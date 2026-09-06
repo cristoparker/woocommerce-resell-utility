@@ -24,6 +24,11 @@ class WRU_Order_Manager {
 	 * Register hooks.
 	 */
 	public function register_hooks() {
+		// Register custom WooCommerce order statuses (Packed & Shipped).
+		add_action( 'init', array( $this, 'register_custom_order_statuses' ) );
+		add_filter( 'wc_order_statuses', array( $this, 'add_custom_order_statuses' ) );
+		add_filter( 'woocommerce_reports_order_statuses', array( $this, 'add_custom_order_statuses_to_reports' ) );
+
 		// Cart item data handling.
 		add_filter( 'woocommerce_add_cart_item_data', array( $this, 'add_cart_item_data' ), 10, 3 );
 		add_filter( 'woocommerce_get_cart_item_from_session', array( $this, 'get_cart_item_from_session' ), 10, 2 );
@@ -63,6 +68,65 @@ class WRU_Order_Manager {
 		add_filter( 'manage_woocommerce_page_wc-orders_columns', array( $this, 'add_order_list_columns' ) );
 		add_action( 'manage_shop_order_posts_custom_column', array( $this, 'render_order_list_column_content' ), 10, 2 );
 		add_action( 'manage_woocommerce_page_wc-orders_custom_column', array( $this, 'render_order_list_column_content' ), 10, 2 );
+	}
+
+	/**
+	 * Register custom order statuses (Packed & Shipped).
+	 */
+	public function register_custom_order_statuses() {
+		register_post_status(
+			'wc-packed',
+			array(
+				'label'                     => _x( 'প্যাকড (Packed)', 'Order status', 'woocommerce-resell-utility' ),
+				'public'                    => true,
+				'exclude_from_search'       => false,
+				'show_in_admin_all_list'    => true,
+				'show_in_admin_status_list' => true,
+				'label_count'               => _n_noop( 'প্যাকড <span class="count">(%s)</span>', 'প্যাকড <span class="count">(%s)</span>', 'woocommerce-resell-utility' ),
+			)
+		);
+
+		register_post_status(
+			'wc-shipped',
+			array(
+				'label'                     => _x( 'শিপড (Shipped)', 'Order status', 'woocommerce-resell-utility' ),
+				'public'                    => true,
+				'exclude_from_search'       => false,
+				'show_in_admin_all_list'    => true,
+				'show_in_admin_status_list' => true,
+				'label_count'               => _n_noop( 'শিপড <span class="count">(%s)</span>', 'শিপড <span class="count">(%s)</span>', 'woocommerce-resell-utility' ),
+			)
+		);
+	}
+
+	/**
+	 * Add custom statuses to WooCommerce order statuses array.
+	 *
+	 * @param array $order_statuses Existing statuses.
+	 * @return array
+	 */
+	public function add_custom_order_statuses( $order_statuses ) {
+		$new_statuses = array();
+		foreach ( $order_statuses as $key => $status ) {
+			$new_statuses[ $key ] = $status;
+			if ( 'wc-processing' === $key ) {
+				$new_statuses['wc-packed']  = _x( 'প্যাকড (Packed)', 'Order status', 'woocommerce-resell-utility' );
+				$new_statuses['wc-shipped'] = _x( 'শিপড (Shipped)', 'Order status', 'woocommerce-resell-utility' );
+			}
+		}
+		return $new_statuses;
+	}
+
+	/**
+	 * Include custom statuses in WooCommerce reports if applicable.
+	 *
+	 * @param array $order_statuses Existing report statuses.
+	 * @return array
+	 */
+	public function add_custom_order_statuses_to_reports( $order_statuses ) {
+		$order_statuses[] = 'packed';
+		$order_statuses[] = 'shipped';
+		return $order_statuses;
 	}
 
 	/**
@@ -314,9 +378,20 @@ class WRU_Order_Manager {
 			}
 		}
 
-		$packaging_fee_rate = WRU_Settings::get_packaging_fee();
-		$packaging_mode     = WRU_Settings::get_packaging_type();
-		$total_packaging    = ( 'item' === $packaging_mode ) ? ( $packaging_fee_rate * $total_qty ) : $packaging_fee_rate;
+		// Calculate packaging fee per item or order using product-specific fees.
+		$packaging_mode  = WRU_Settings::get_packaging_type();
+		$total_packaging = 0.0;
+
+		foreach ( $order->get_items() as $item ) {
+			$qty           = (int) $item->get_quantity();
+			$prod          = $item->get_product();
+			$item_pack_fee = $prod ? WRU_Product_Fields::get_packaging_fee( $prod ) : WRU_Settings::get_packaging_fee();
+			$total_packaging += ( 'item' === $packaging_mode ) ? ( $item_pack_fee * $qty ) : $item_pack_fee;
+		}
+
+		if ( $total_packaging <= 0 ) {
+			$total_packaging = WRU_Settings::get_packaging_fee();
+		}
 
 		// Courier COD: Total customer selling price + shipping charge.
 		$shipping_total = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
@@ -373,10 +448,134 @@ class WRU_Order_Manager {
 	}
 
 	/**
-	 * On order status change, refresh reseller totals and cancellation penalties.
+	 * On order status change, track packed/shipped lifecycle and refresh totals.
 	 */
 	public function on_order_status_changed( $order_id, $from, $to, $order = null ) {
+		if ( ! $order ) {
+			$order = wc_get_order( $order_id );
+		}
+		if ( $order ) {
+			if ( 'packed' === $to ) {
+				$order->update_meta_data( '_wru_was_packed', 'yes' );
+				$order->save();
+			} elseif ( 'shipped' === $to ) {
+				$order->update_meta_data( '_wru_was_packed', 'yes' );
+				$order->update_meta_data( '_wru_was_shipped', 'yes' );
+				$order->save();
+			}
+		}
 		$this->calculate_order_reseller_totals( $order_id, array(), $order );
+	}
+
+	/**
+	 * Calculate order cancellation or refund deduction based on parcel stage.
+	 *
+	 * Matrix:
+	 * - Failed: 0 deduction (stock issue / store inability to fulfill).
+	 * - Shipped: Packaging Fee + Cancellation Penalty Fee + Shipping Fee.
+	 * - Packed (before shipping): Packaging Fee only.
+	 * - Processing/Pending/On-hold (before packing): 0 deduction.
+	 *
+	 * @param \WC_Order|int $order Order object or ID.
+	 * @return array
+	 */
+	public static function get_order_cancellation_breakdown( $order ) {
+		if ( is_numeric( $order ) ) {
+			$order = wc_get_order( $order );
+		}
+		if ( ! $order ) {
+			return array(
+				'total_loss'    => 0.0,
+				'packaging_fee' => 0.0,
+				'shipping_fee'  => 0.0,
+				'penalty_fee'   => 0.0,
+				'reason'        => '',
+				'is_deductible' => false,
+			);
+		}
+
+		$order_status = $order->get_status();
+
+		// 1. Failed order: 0 deduction (wholesale stock problem, not reseller fault).
+		if ( 'failed' === $order_status ) {
+			return array(
+				'total_loss'    => 0.0,
+				'packaging_fee' => 0.0,
+				'shipping_fee'  => 0.0,
+				'penalty_fee'   => 0.0,
+				'reason'        => __( 'ফেইল্ড অর্ডার (স্টক বা শপ জনিত কারণে বাতিল, রিসেলারের কোনো কর্তন নেই)', 'woocommerce-resell-utility' ),
+				'is_deductible' => false,
+			);
+		}
+
+		if ( ! in_array( $order_status, array( 'cancelled', 'refunded' ), true ) ) {
+			return array(
+				'total_loss'    => 0.0,
+				'packaging_fee' => 0.0,
+				'shipping_fee'  => 0.0,
+				'penalty_fee'   => 0.0,
+				'reason'        => '',
+				'is_deductible' => false,
+			);
+		}
+
+		$packaging_fee = (float) $order->get_meta( '_wru_total_packaging_fee' );
+		if ( $packaging_fee <= 0 ) {
+			$packaging_fee = WRU_Settings::get_packaging_fee();
+		}
+
+		$shipping_fee = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
+		if ( $shipping_fee <= 0 ) {
+			$shipping_fee = (float) $order->get_meta( '_wru_shipping_charge' );
+		}
+
+		$cancellation_fee_rate = WRU_Settings::get_cancellation_fee();
+
+		$is_refunded = ( 'refunded' === $order_status );
+		$was_shipped = ( 'shipped' === $order_status || 'yes' === $order->get_meta( '_wru_was_shipped' ) || $is_refunded );
+		$was_packed  = ( 'packed' === $order_status || 'yes' === $order->get_meta( '_wru_was_packed' ) );
+
+		// 2. Refunded (পার্সেল ঘুরে রিফান্ড) or Cancelled after parcel was shipped to courier:
+		// Full deduction = Packaging Fee + Penalty Fee + Shipping Fee
+		if ( $is_refunded || $was_shipped ) {
+			$total_loss = $packaging_fee + $cancellation_fee_rate + $shipping_fee;
+			$reason_msg = $is_refunded
+				? __( 'পার্সেল রিটার্ন / রিফান্ড (প্যাকেজিং ফি + জরিমানা ফি + শিপিং ফি কর্তন)', 'woocommerce-resell-utility' )
+				: __( 'শিপড / কুরিয়ারে প্রেরণের পর বাতিল (প্যাকেজিং ফি + জরিমানা ফি + শিপিং ফি কর্তন)', 'woocommerce-resell-utility' );
+
+			return array(
+				'total_loss'    => (float) $total_loss,
+				'packaging_fee' => (float) $packaging_fee,
+				'shipping_fee'  => (float) $shipping_fee,
+				'penalty_fee'   => (float) $cancellation_fee_rate,
+				'reason'        => $reason_msg,
+				'is_deductible' => true,
+			);
+		}
+
+		// 3. Cancelled while packed (before being shipped to courier):
+		// Deduction = Packaging Fee only
+		if ( $was_packed ) {
+			return array(
+				'total_loss'    => (float) $packaging_fee,
+				'packaging_fee' => (float) $packaging_fee,
+				'shipping_fee'  => 0.0,
+				'penalty_fee'   => 0.0,
+				'reason'        => __( 'প্যাকড হওয়ার পর বাতিল (শুধুমাত্র প্যাকেজিং ফি কর্তন)', 'woocommerce-resell-utility' ),
+				'is_deductible' => true,
+			);
+		}
+
+		// 4. Cancelled while pending / on-hold / processing before packing:
+		// Deduction = 0
+		return array(
+			'total_loss'    => 0.0,
+			'packaging_fee' => 0.0,
+			'shipping_fee'  => 0.0,
+			'penalty_fee'   => 0.0,
+			'reason'        => __( 'প্যাক করার পূর্বে বাতিল (কোনো ফি কর্তন হয়নি)', 'woocommerce-resell-utility' ),
+			'is_deductible' => false,
+		);
 	}
 
 	/**
@@ -645,17 +844,24 @@ class WRU_Order_Manager {
 			<?php
 			$order_status = $order->get_status();
 			if ( in_array( $order_status, array( 'cancelled', 'failed', 'refunded' ), true ) ) :
-				$shipping_fee = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
-				if ( $shipping_fee <= 0 ) {
-					$shipping_fee = (float) $order->get_meta( '_wru_shipping_charge' );
-				}
-				$cancellation_fee_rate = WRU_Settings::get_cancellation_fee();
-				$order_loss = $packaging + $cancellation_fee_rate + $shipping_fee;
+				$breakdown  = self::get_order_cancellation_breakdown( $order );
+				$order_loss = $breakdown['total_loss'];
 			?>
-				<div class="wru-order-cancel-alert" style="margin-top: 15px; padding: 12px 16px; background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; color: #991b1b;">
-					<strong><?php printf( esc_html__( 'অর্ডার স্ট্যাটাস (%s) - রিসেলার ব্যালেন্স হতে মোট কর্তন: %s', 'woocommerce-resell-utility' ), esc_html( wc_get_order_status_name( $order_status ) ), '-' . wc_price( $order_loss ) ); ?></strong>
-					<div style="font-size: 12px; margin-top: 4px; color: #7f1d1d;">
-						<?php printf( esc_html__( 'বিস্তারিত কর্তন: ডেলিভারি ফি (%s) + জরিমানা ফি (%s) + প্যাকেজিং ফি (%s)', 'woocommerce-resell-utility' ), wc_price( $shipping_fee ), wc_price( $cancellation_fee_rate ), wc_price( $packaging ) ); ?>
+				<div class="wru-order-cancel-alert" style="margin-top: 15px; padding: 12px 16px; background: <?php echo $order_loss > 0 ? '#fef2f2' : '#f8fafc'; ?>; border: 1.5px solid <?php echo $order_loss > 0 ? '#fca5a5' : '#cbd5e1'; ?>; border-radius: 8px; color: <?php echo $order_loss > 0 ? '#991b1b' : '#334155'; ?>;">
+					<strong>
+						<?php if ( $order_loss > 0 ) : ?>
+							<?php printf( esc_html__( 'অর্ডার স্ট্যাটাস (%s) - রিসেলার ব্যালেন্স হতে মোট কর্তন: %s', 'woocommerce-resell-utility' ), esc_html( wc_get_order_status_name( $order_status ) ), '-' . wc_price( $order_loss ) ); ?>
+						<?php else : ?>
+							<?php printf( esc_html__( 'অর্ডার স্ট্যাটাস (%s) - রিসেলারের কোনো ফি কর্তন হয়নি (৳০)', 'woocommerce-resell-utility' ), esc_html( wc_get_order_status_name( $order_status ) ) ); ?>
+						<?php endif; ?>
+					</strong>
+					<div style="font-size: 12px; margin-top: 4px; color: <?php echo $order_loss > 0 ? '#7f1d1d' : '#64748b'; ?>;">
+						<?php echo esc_html( $breakdown['reason'] ); ?>
+						<?php if ( $order_loss > 0 && $breakdown['shipping_fee'] > 0 ) : ?>
+							<br><?php printf( esc_html__( 'বিস্তারিত: প্যাকেজিং ফি (%s) + জরিমানা (%s) + ডেলিভারি ফি (%s)', 'woocommerce-resell-utility' ), wc_price( $breakdown['packaging_fee'] ), wc_price( $breakdown['penalty_fee'] ), wc_price( $breakdown['shipping_fee'] ) ); ?>
+						<?php elseif ( $order_loss > 0 ) : ?>
+							<br><?php printf( esc_html__( 'বিস্তারিত: শুধুমাত্র প্যাকেজিং খরচ (%s)', 'woocommerce-resell-utility' ), wc_price( $breakdown['packaging_fee'] ) ); ?>
+						<?php endif; ?>
 					</div>
 				</div>
 			<?php endif; ?>
@@ -715,16 +921,12 @@ class WRU_Order_Manager {
 					<span class="wru-val">-<?php echo wc_price( $packaging ); ?></span>
 				</div>
 				<?php if ( $is_cancelled ) : 
-					$shipping_fee = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
-					if ( $shipping_fee <= 0 ) {
-						$shipping_fee = (float) $order->get_meta( '_wru_shipping_charge' );
-					}
-					$cancellation_fee_rate = WRU_Settings::get_cancellation_fee();
-					$order_loss = $packaging + $cancellation_fee_rate + $shipping_fee;
+					$breakdown  = self::get_order_cancellation_breakdown( $order );
+					$order_loss = $breakdown['total_loss'];
 				?>
-					<div class="wru-order-profit-item wru-profit-highlight" style="background:#fef2f2; border-color:#fca5a5;">
-						<span class="wru-label" style="color:#991b1b;"><?php esc_html_e( 'অর্ডার কর্তন (Loss):', 'woocommerce-resell-utility' ); ?></span>
-						<strong class="wru-val" style="color:#dc2626;">-<?php echo wc_price( $order_loss ); ?></strong>
+					<div class="wru-order-profit-item wru-profit-highlight" style="background: <?php echo $order_loss > 0 ? '#fef2f2' : '#f8fafc'; ?>; border-color: <?php echo $order_loss > 0 ? '#fca5a5' : '#cbd5e1'; ?>;">
+						<span class="wru-label" style="color: <?php echo $order_loss > 0 ? '#991b1b' : '#334155'; ?>;"><?php esc_html_e( 'অর্ডার কর্তন (Loss):', 'woocommerce-resell-utility' ); ?></span>
+						<strong class="wru-val" style="color: <?php echo $order_loss > 0 ? '#dc2626' : '#64748b'; ?>;"><?php echo $order_loss > 0 ? '-' . wc_price( $order_loss ) : wc_price( 0 ); ?></strong>
 					</div>
 				<?php else : ?>
 					<div class="wru-order-profit-item wru-profit-highlight">
@@ -734,8 +936,8 @@ class WRU_Order_Manager {
 				<?php endif; ?>
 			</div>
 			<?php if ( $is_cancelled ) : ?>
-				<p class="wru-order-note" style="color:#dc2626;">
-					<em><?php esc_html_e( 'নোট: পার্সেলটি বাতিল/রিটার্ন হওয়ায় ডেলিভারি ফি, প্যাকেজিং খরচ ও জরিমানা ফি আপনার ব্যালেন্স হতে সমন্বয় করা হয়েছে।', 'woocommerce-resell-utility' ); ?></em>
+				<p class="wru-order-note" style="color: <?php echo $order_loss > 0 ? '#dc2626' : '#64748b'; ?>;">
+					<em><?php echo esc_html( $breakdown['reason'] ); ?></em>
 				</p>
 			<?php else : ?>
 				<p class="wru-order-note">

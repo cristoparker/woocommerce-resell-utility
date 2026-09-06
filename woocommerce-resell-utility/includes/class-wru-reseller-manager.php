@@ -39,6 +39,11 @@ class WRU_Reseller_Manager {
 		add_action( 'admin_post_wru_reject_cashout', array( $this, 'handle_reject_cashout' ) );
 		add_action( 'admin_post_wru_assign_role', array( $this, 'handle_assign_reseller_role' ) );
 		add_action( 'admin_post_wru_create_reseller', array( $this, 'handle_create_reseller' ) );
+		add_action( 'admin_post_wru_delete_reseller', array( $this, 'handle_delete_reseller' ) );
+		add_action( 'admin_post_wru_delete_cashout', array( $this, 'handle_delete_cashout' ) );
+
+		// Clean up orphan cashouts when a user is deleted anywhere in WordPress.
+		add_action( 'deleted_user', array( $this, 'on_user_deleted' ), 10, 2 );
 
 		// AJAX for ledger modal.
 		add_action( 'wp_ajax_wru_get_reseller_ledger', array( $this, 'ajax_get_reseller_ledger' ) );
@@ -187,19 +192,11 @@ class WRU_Reseller_Manager {
 			if ( 'completed' === $status ) {
 				$completed_profit += $profit;
 				$completed_count++;
-			} elseif ( in_array( $status, array( 'processing', 'on-hold', 'pending' ), true ) ) {
+			} elseif ( in_array( $status, array( 'processing', 'on-hold', 'pending', 'packed', 'shipped' ), true ) ) {
 				$pending_profit += $profit;
 			} elseif ( in_array( $status, array( 'cancelled', 'failed', 'refunded' ), true ) ) {
-				$order_packaging = (float) $order->get_meta( '_wru_total_packaging_fee' );
-				if ( $order_packaging <= 0 ) {
-					$order_packaging = WRU_Settings::get_packaging_fee();
-				}
-				$order_shipping = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
-				if ( $order_shipping <= 0 ) {
-					$order_shipping = (float) $order->get_meta( '_wru_shipping_charge' );
-				}
-				$order_loss         = $order_packaging + $cancellation_fee_rate + $order_shipping;
-				$cancelled_penalty += $order_loss;
+				$breakdown          = WRU_Order_Manager::get_order_cancellation_breakdown( $order );
+				$cancelled_penalty += $breakdown['total_loss'];
 			}
 		}
 
@@ -660,6 +657,104 @@ class WRU_Reseller_Manager {
 	}
 
 	/**
+	 * Handle admin request to delete a reseller and clean up their records.
+	 */
+	public function handle_delete_reseller() {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'আপনার এই কাজটি করার অনুমতি নেই।', 'woocommerce-resell-utility' ) );
+		}
+
+		check_admin_referer( 'wru_delete_reseller_action', 'wru_nonce' );
+
+		$reseller_id   = isset( $_POST['reseller_id'] ) ? (int) $_POST['reseller_id'] : 0;
+		$delete_orders = isset( $_POST['delete_orders'] ) && 'yes' === $_POST['delete_orders'];
+
+		if ( $reseller_id <= 1 ) {
+			wp_die( esc_html__( 'অবৈধ ইউজার বা অ্যাডমিন একাউন্ট ডিলিট করা সম্ভব নয়।', 'woocommerce-resell-utility' ) );
+		}
+
+		// 1. Permanently delete orders if requested by admin.
+		if ( $delete_orders ) {
+			$orders = wc_get_orders( array(
+				'customer' => $reseller_id,
+				'limit'    => -1,
+			) );
+			foreach ( $orders as $order ) {
+				$order->delete( true );
+			}
+		}
+
+		// 2. Permanently delete all cashout history for this reseller.
+		$cashouts = get_posts( array(
+			'post_type'   => self::CPT_CASHOUT,
+			'post_status' => 'any',
+			'numberposts' => -1,
+			'meta_key'    => '_wru_reseller_id',
+			'meta_value'  => $reseller_id,
+			'fields'      => 'ids',
+		) );
+		foreach ( $cashouts as $cid ) {
+			wp_delete_post( $cid, true );
+		}
+
+		// 3. Delete user account and all usermeta cleanly.
+		require_once ABSPATH . 'wp-admin/includes/user.php';
+		wp_delete_user( $reseller_id );
+
+		wp_safe_redirect( add_query_arg( array(
+			'page'    => 'wru-resellers',
+			'tab'     => 'resellers',
+			'message' => 'reseller_deleted',
+		), admin_url( 'admin.php' ) ) );
+		exit;
+	}
+
+	/**
+	 * Handle admin request to delete an individual cashout request.
+	 */
+	public function handle_delete_cashout() {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'আপনার এই কাজটি করার অনুমতি নেই।', 'woocommerce-resell-utility' ) );
+		}
+
+		check_admin_referer( 'wru_delete_cashout_action', 'wru_nonce' );
+
+		$cashout_id = isset( $_POST['cashout_id'] ) ? (int) $_POST['cashout_id'] : 0;
+		if ( $cashout_id > 0 ) {
+			wp_delete_post( $cashout_id, true );
+		}
+
+		wp_safe_redirect( add_query_arg( array(
+			'page'    => 'wru-resellers',
+			'tab'     => 'cashouts',
+			'message' => 'cashout_deleted',
+		), admin_url( 'admin.php' ) ) );
+		exit;
+	}
+
+	/**
+	 * Automatically clean up orphan cashout posts when any user is deleted from WP.
+	 *
+	 * @param int      $user_id      ID of the deleted user.
+	 * @param int|null $reassign_id  Reassign ID if specified.
+	 */
+	public function on_user_deleted( $user_id, $reassign_id = null ) {
+		if ( $user_id > 1 ) {
+			$cashouts = get_posts( array(
+				'post_type'   => self::CPT_CASHOUT,
+				'post_status' => 'any',
+				'numberposts' => -1,
+				'meta_key'    => '_wru_reseller_id',
+				'meta_value'  => $user_id,
+				'fields'      => 'ids',
+			) );
+			foreach ( $cashouts as $cid ) {
+				wp_delete_post( $cid, true );
+			}
+		}
+	}
+
+	/**
 	 * AJAX endpoint to return reseller ledger.
 	 */
 	public function ajax_get_reseller_ledger() {
@@ -913,6 +1008,50 @@ class WRU_Reseller_Manager {
 				</div>
 			</div>
 		</div>
+
+		<!-- Delete Reseller Modal -->
+		<div id="wru-delete-reseller-modal" class="wru-admin-modal" style="display:none;">
+			<div class="wru-modal-overlay"></div>
+			<div class="wru-modal-box">
+				<div class="wru-modal-header">
+					<h3 style="color:#dc2626; margin:0;"><?php esc_html_e( 'রিসেলার একাউন্ট ডিলিট নিশ্চিতকরণ', 'woocommerce-resell-utility' ); ?></h3>
+					<button type="button" class="wru-modal-close">&times;</button>
+				</div>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+					<?php wp_nonce_field( 'wru_delete_reseller_action', 'wru_nonce' ); ?>
+					<input type="hidden" name="action" value="wru_delete_reseller" />
+					<input type="hidden" name="reseller_id" id="wru_del_reseller_id" value="" />
+					
+					<div class="wru-modal-body">
+						<p style="font-size:14px; margin-bottom:12px;">
+							<strong><?php esc_html_e( 'রিসেলার:', 'woocommerce-resell-utility' ); ?></strong> <span id="wru_del_reseller_name" style="color:#0f172a; font-weight:700;"></span>
+						</p>
+						
+						<div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; padding:12px; margin-bottom:15px; color:#991b1b; font-size:13px;">
+							<strong><?php esc_html_e( 'সতর্কতা:', 'woocommerce-resell-utility' ); ?></strong>
+							<?php esc_html_e( 'এই রিসেলারের ইউজার প্রোফাইল, ব্যালেন্স এবং সমস্ত ক্যাশআউট রিকোয়েস্ট ডাটাবেস থেকে পার্মানেন্টলি ডিলিট হয়ে যাবে।', 'woocommerce-resell-utility' ); ?>
+						</div>
+
+						<div style="margin-bottom:15px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;">
+							<label style="font-weight:600; cursor:pointer; display:flex; align-items:flex-start; gap:8px;">
+								<input type="checkbox" name="delete_orders" value="yes" style="margin-top:3px;" />
+								<span>
+									<?php esc_html_e( 'এই রিসেলারের সমস্ত অর্ডারও ডাটাবেস থেকে পার্মানেন্টলি মুছে ফেলুন', 'woocommerce-resell-utility' ); ?>
+									<br><small style="color:#64748b; font-weight:normal;"><?php esc_html_e( 'টিক না দিলে অর্ডারগুলো অক্ষত থাকবে কিন্তু কোনো রিসেলারের সাথে আর লিঙ্ক থাকবে না।', 'woocommerce-resell-utility' ); ?></small>
+								</span>
+							</label>
+						</div>
+					</div>
+
+					<div class="wru-modal-footer">
+						<button type="button" class="button wru-modal-cancel"><?php esc_html_e( 'বাতিল', 'woocommerce-resell-utility' ); ?></button>
+						<button type="submit" class="button button-primary" style="background:#dc2626; border-color:#b91c1c; color:#fff;">
+							<?php esc_html_e( 'হ্যাঁ, পার্মানেন্টলি ডিলিট করুন', 'woocommerce-resell-utility' ); ?>
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
 		<?php
 	}
 
@@ -1016,6 +1155,9 @@ class WRU_Reseller_Manager {
 									<strong style="font-size:15px; color: <?php echo $balance_data['available_balance'] >= 0 ? '#16a34a' : '#dc2626'; ?>;">
 										<?php echo wc_price( $balance_data['available_balance'] ); ?>
 									</strong>
+									<?php if ( $balance_data['available_balance'] < 0 ) : ?>
+										<br><span style="color:#dc2626; font-size:11px; font-weight:700;"><?php esc_html_e( '(বকেয়া ঋণাত্মক ব্যালেন্স)', 'woocommerce-resell-utility' ); ?></span>
+									<?php endif; ?>
 									<?php if ( $balance_data['pending_cashouts'] > 0 ) : ?>
 										<br><small style="color:#d97706; font-weight:600;">(পেন্ডিং: <?php echo wc_price( $balance_data['pending_cashouts'] ); ?>)</small>
 									<?php endif; ?>
@@ -1030,6 +1172,13 @@ class WRU_Reseller_Manager {
 										</button>
 										<button type="button" class="button button-small wru-btn-view-ledger" data-user-id="<?php echo esc_attr( $uid ); ?>">
 											<?php esc_html_e( 'লেনদেন হিস্ট্রি', 'woocommerce-resell-utility' ); ?>
+										</button>
+										<button type="button" class="button button-small button-link-delete wru-btn-delete-reseller" 
+											style="color:#dc2626; text-decoration:none; margin-top:2px;"
+											data-user-id="<?php echo esc_attr( $uid ); ?>"
+											data-user-name="<?php echo esc_attr( $reseller->display_name . ' (' . $reseller->user_email . ')' ); ?>"
+											data-orders-count="<?php echo esc_attr( $balance_data['orders_count'] ); ?>">
+											<?php esc_html_e( 'রিসেলার ডিলিট', 'woocommerce-resell-utility' ); ?>
 										</button>
 									</div>
 								</td>
@@ -1151,9 +1300,27 @@ class WRU_Reseller_Manager {
 											<button type="button" class="button button-small wru-btn-reject-cashout" data-id="<?php echo esc_attr( $post->ID ); ?>" style="color:#dc2626;">
 												<?php esc_html_e( 'বাতিল করুন', 'woocommerce-resell-utility' ); ?>
 											</button>
+											<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php esc_attr_e( 'আপনি কি এই ক্যাশআউট রিকোয়েস্টটি ডাটাবেস থেকে মুছে ফেলতে চান?', 'woocommerce-resell-utility' ); ?>');">
+												<?php wp_nonce_field( 'wru_delete_cashout_action', 'wru_nonce' ); ?>
+												<input type="hidden" name="action" value="wru_delete_cashout" />
+												<input type="hidden" name="cashout_id" value="<?php echo esc_attr( $post->ID ); ?>" />
+												<button type="submit" class="button button-small button-link-delete" style="color:#dc2626; text-decoration:none; padding:0; font-size:11px;">
+													<?php esc_html_e( 'মুছে ফেলুন', 'woocommerce-resell-utility' ); ?>
+												</button>
+											</form>
 										</div>
 									<?php else : ?>
-										<span style="color:#64748b; font-size:12px;"><?php esc_html_e( 'সম্পন্ন হয়েছে', 'woocommerce-resell-utility' ); ?></span>
+										<div style="display:flex; flex-direction:column; gap:4px;">
+											<span style="color:#64748b; font-size:12px;"><?php esc_html_e( 'সম্পন্ন হয়েছে', 'woocommerce-resell-utility' ); ?></span>
+											<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php esc_attr_e( 'আপনি কি এই ক্যাশআউট হিস্ট্রি রেকর্ডটি ডাটাবেস থেকে সম্পূর্ণ ডিলিট করতে চান?', 'woocommerce-resell-utility' ); ?>');">
+												<?php wp_nonce_field( 'wru_delete_cashout_action', 'wru_nonce' ); ?>
+												<input type="hidden" name="action" value="wru_delete_cashout" />
+												<input type="hidden" name="cashout_id" value="<?php echo esc_attr( $post->ID ); ?>" />
+												<button type="submit" class="button button-small button-link-delete" style="color:#dc2626; text-decoration:none; padding:0; font-size:11px;">
+													<?php esc_html_e( 'রেকর্ড মুছুন', 'woocommerce-resell-utility' ); ?>
+												</button>
+											</form>
+										</div>
 									<?php endif; ?>
 								</td>
 							</tr>

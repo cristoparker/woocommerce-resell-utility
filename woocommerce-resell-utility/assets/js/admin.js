@@ -142,5 +142,17 @@
 			});
 		});
 
+		// 5. Delete Reseller Modal
+		$(document).on('click', '.wru-btn-delete-reseller', function(e) {
+			e.preventDefault();
+			var userId   = $(this).data('user-id');
+			var userName = $(this).data('user-name');
+
+			$('#wru_del_reseller_id').val(userId);
+			$('#wru_del_reseller_name').text(userName);
+
+			$('#wru-delete-reseller-modal').fadeIn(200);
+		});
+
 	});
 })(jQuery);

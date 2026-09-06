@@ -36,6 +36,9 @@ class WRU_Reseller_Dashboard {
 
 		// Save payout details form.
 		add_action( 'template_redirect', array( $this, 'save_payout_details' ) );
+
+		// Handle reseller self-cancellation of pending/processing/packed orders.
+		add_action( 'template_redirect', array( $this, 'handle_reseller_order_cancellation' ) );
 	}
 
 	/**
@@ -101,6 +104,52 @@ class WRU_Reseller_Dashboard {
 		update_user_meta( $user_id, '_wru_payout_notes', $notes );
 
 		wc_add_notice( __( 'আপনার পেআউট ও শপ/কোম্পানির তথ্য সফলভাবে সংরক্ষিত হয়েছে।', 'woocommerce-resell-utility' ), 'success' );
+	}
+
+	/**
+	 * Handle reseller self-cancellation of pending, processing, or packed orders.
+	 */
+	public function handle_reseller_order_cancellation() {
+		if ( ! is_user_logged_in() || ! isset( $_POST['wru_cancel_order_action'] ) ) {
+			return;
+		}
+
+		if ( ! isset( $_POST['wru_cancel_nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['wru_cancel_nonce'] ), 'wru_reseller_cancel_order' ) ) {
+			wc_add_notice( __( 'নিরাপত্তা যাচাই ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+
+		$order_id = isset( $_POST['order_id'] ) ? absint( $_POST['order_id'] ) : 0;
+		$order    = wc_get_order( $order_id );
+
+		if ( ! $order ) {
+			wc_add_notice( __( 'অর্ডারটি খুঁজে পাওয়া যায়নি।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+
+		$user_id = get_current_user_id();
+		if ( (int) $order->get_customer_id() !== $user_id && (int) $order->get_meta( '_wru_reseller_user_id' ) !== $user_id ) {
+			wc_add_notice( __( 'এই অর্ডারটি বাতিল করার অনুমতি আপনার নেই।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+
+		$current_status = $order->get_status();
+		$cancellable    = array( 'pending', 'on-hold', 'processing', 'packed' );
+
+		if ( ! in_array( $current_status, $cancellable, true ) ) {
+			wc_add_notice( __( 'পার্সেলটি কুরিয়ারে প্রেরণ (Shipped) বা সম্পন্ন হয়ে যাওয়ার কারণে আর ড্যাশবোর্ড হতে সরাসরি বাতিল করা সম্ভব নয়। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+
+		// Transition status to cancelled with audit note.
+		$order->update_status( 'cancelled', __( 'রিসেলার কর্তৃক ড্যাশবোর্ড থেকে অর্ডার বাতিল করা হয়েছে।', 'woocommerce-resell-utility' ) );
+		$order->update_meta_data( '_wru_cancelled_by', 'reseller' );
+		$order->save();
+
+		wc_add_notice( sprintf( __( 'অর্ডার #%d সফলভাবে বাতিল করা হয়েছে।', 'woocommerce-resell-utility' ), $order_id ), 'success' );
+
+		wp_safe_redirect( wc_get_endpoint_url( self::ENDPOINT, '', wc_get_page_permalink( 'myaccount' ) ) );
+		exit;
 	}
 
 	/**
@@ -201,11 +250,20 @@ class WRU_Reseller_Dashboard {
 					</div>
 					<div class="wru-stat-info">
 						<span class="wru-stat-title"><?php esc_html_e( 'উত্তোলনযোগ্য অবশিষ্ট ব্যালেন্স', 'woocommerce-resell-utility' ); ?></span>
-						<strong class="wru-stat-number" style="color: <?php echo $available_balance >= 0 ? '#16a34a' : '#dc2626'; ?>"><?php echo wc_price( $available_balance ); ?></strong>
+						<strong class="wru-stat-number" style="color: <?php echo $available_balance >= 0 ? '#16a34a' : '#dc2626'; ?>">
+							<?php echo wc_price( $available_balance ); ?>
+						</strong>
+						<?php if ( $available_balance < 0 ) : ?>
+							<small style="color: #dc2626; font-size: 11px; font-weight:700; display:block;"><?php esc_html_e( '(বকেয়া ঋণাত্মক ব্যালেন্স)', 'woocommerce-resell-utility' ); ?></small>
+						<?php endif; ?>
 						<div style="margin-top: 8px;">
-							<a href="#wru-cashout-section" class="button button-small wru-cashout-trigger-btn" style="background:#16a34a; color:#fff; border-radius:6px; font-weight:700; padding:4px 12px; border:none; text-decoration:none; display:inline-block;">
-								<?php esc_html_e( 'টাকা ক্যাশআউট করুন', 'woocommerce-resell-utility' ); ?>
-							</a>
+							<?php if ( $available_balance > 0 ) : ?>
+								<a href="#wru-cashout-section" class="button button-small wru-cashout-trigger-btn" style="background:#16a34a; color:#fff; border-radius:6px; font-weight:700; padding:4px 12px; border:none; text-decoration:none; display:inline-block;">
+									<?php esc_html_e( 'টাকা ক্যাশআউট করুন', 'woocommerce-resell-utility' ); ?>
+								</a>
+							<?php else : ?>
+								<span style="color:#94a3b8; font-size:12px; font-style:italic;"><?php esc_html_e( 'ক্যাশআউট অনুপলব্ধ', 'woocommerce-resell-utility' ); ?></span>
+							<?php endif; ?>
 						</div>
 					</div>
 				</div>
@@ -254,8 +312,12 @@ class WRU_Reseller_Dashboard {
 					<?php esc_html_e( 'আপনার উত্তোলনযোগ্য ব্যালেন্স হতে টাকা তোলার জন্য নিচের ফর্মটি পূরণ করুন। রিকোয়েস্ট পাঠানোর পর এটি পেন্ডিং থাকবে এবং এডমিন টাকা পাঠিয়ে দিলে তা সফল হিসেবে রেকর্ড হবে।', 'woocommerce-resell-utility' ); ?>
 				</p>
 
-				<?php if ( $available_balance <= 0 ) : ?>
+				<?php if ( $available_balance < 0 ) : ?>
 					<div style="background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; padding:12px 16px; border-radius:8px; font-weight:600;">
+						<?php printf( esc_html__( 'আপনার বর্তমান ব্যালেন্স ঋণাত্মক (%s)। বাতিল/রিটার্ন পার্সেলের ফি কর্তন সমন্বয়ের কারণে এই বকেয়া তৈরি হয়েছে। আপনার পরবর্তী অর্ডার ডেলিভারি সম্পন্ন হলে অর্জিত মুনাফা থেকে এই বকেয়া স্বয়ংক্রিয়ভাবে সমন্বয় হবে।', 'woocommerce-resell-utility' ), wc_price( $available_balance ) ); ?>
+					</div>
+				<?php elseif ( $available_balance == 0 ) : ?>
+					<div style="background:#f8fafc; border:1px solid #cbd5e1; color:#475569; padding:12px 16px; border-radius:8px; font-weight:600;">
 						<?php esc_html_e( 'আপনার বর্তমানে কোনো উত্তোলনযোগ্য অবশিষ্ট ব্যালেন্স নেই। আপনার কাস্টমারদের অর্ডার সফলভাবে ডেলিভারি হওয়ার পর প্রফিট যোগ হবে।', 'woocommerce-resell-utility' ); ?>
 					</div>
 				<?php else : ?>
@@ -504,11 +566,16 @@ class WRU_Reseller_Dashboard {
 											$order_status = $resell_order->get_status();
 											if ( 'completed' === $order_status ) {
 												echo '<strong style="color: #16a34a;">+' . wc_price( $profit ) . '</strong>';
-											} elseif ( in_array( $order_status, array( 'processing', 'on-hold', 'pending' ), true ) ) {
+											} elseif ( in_array( $order_status, array( 'processing', 'on-hold', 'pending', 'packed', 'shipped' ), true ) ) {
 												echo '<strong style="color: #d97706;">' . wc_price( $profit ) . '</strong><br><small style="color:#64748b; font-size:11px;">(' . esc_html__( 'পেন্ডিং', 'woocommerce-resell-utility' ) . ')</small>';
 											} elseif ( in_array( $order_status, array( 'cancelled', 'failed', 'refunded' ), true ) ) {
-												$order_loss = $packaging + $cancellation_fee_rate + $shipping_fee;
-												echo '<strong style="color: #dc2626;">-' . wc_price( $order_loss ) . '</strong><br><small style="color:#dc2626; font-size:11px;">(' . esc_html__( 'কর্তন', 'woocommerce-resell-utility' ) . ')</small>';
+												$breakdown  = WRU_Order_Manager::get_order_cancellation_breakdown( $resell_order );
+												$order_loss = $breakdown['total_loss'];
+												if ( $order_loss > 0 ) {
+													echo '<strong style="color: #dc2626;">-' . wc_price( $order_loss ) . '</strong><br><small style="color:#dc2626; font-size:11px;">(' . esc_html( $breakdown['reason'] ) . ')</small>';
+												} else {
+													echo '<strong style="color: #64748b;">' . wc_price( 0 ) . '</strong><br><small style="color:#64748b; font-size:11px;">(' . esc_html( $breakdown['reason'] ) . ')</small>';
+												}
 											} else {
 												echo wc_price( $profit );
 											}
@@ -520,9 +587,21 @@ class WRU_Reseller_Dashboard {
 											</span>
 										</td>
 										<td>
-											<a href="<?php echo esc_url( $resell_order->get_view_order_url() ); ?>" class="button wru-view-order-btn">
-												<?php esc_html_e( 'ভিউ', 'woocommerce-resell-utility' ); ?>
-											</a>
+											<div style="display:flex; flex-direction:column; gap:4px;">
+												<a href="<?php echo esc_url( $resell_order->get_view_order_url() ); ?>" class="button wru-view-order-btn" style="text-align:center;">
+													<?php esc_html_e( 'ভিউ', 'woocommerce-resell-utility' ); ?>
+												</a>
+												<?php if ( in_array( $order_status, array( 'pending', 'on-hold', 'processing', 'packed' ), true ) ) : ?>
+													<form method="post" action="" onsubmit="return confirm('<?php echo 'packed' === $order_status ? sprintf( esc_attr__( 'সতর্কতা: এই অর্ডারটি ইতিমধ্যে প্যাক করা হয়ে গেছে। এখন বাতিল করলে আপনার একাউন্ট হতে প্যাকেজিং ফি (%s) কর্তন করা হবে। আপনি কি নিশ্চিত?', 'woocommerce-resell-utility' ), wc_price( $packaging ) ) : esc_attr__( 'আপনি কি নিশ্চিত যে এই অর্ডারটি বাতিল করতে চান? এটি এখনও প্যাক করা হয়নি, তাই কোনো ফি কর্তন হবে না।', 'woocommerce-resell-utility' ); ?>');">
+														<?php wp_nonce_field( 'wru_reseller_cancel_order', 'wru_cancel_nonce' ); ?>
+														<input type="hidden" name="wru_cancel_order_action" value="1" />
+														<input type="hidden" name="order_id" value="<?php echo esc_attr( $order_id ); ?>" />
+														<button type="submit" class="button wru-cancel-order-btn" style="background:#fef2f2; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; font-size:11px; padding:3px 6px; cursor:pointer; width:100%; text-align:center;">
+															<?php esc_html_e( 'বাতিল করুন', 'woocommerce-resell-utility' ); ?>
+														</button>
+													</form>
+												<?php endif; ?>
+											</div>
 										</td>
 									</tr>
 								<?php endforeach; ?>
