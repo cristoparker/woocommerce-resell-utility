@@ -65,6 +65,7 @@ class WRU_Admin_Settings {
 		);
 
 		wp_localize_script( 'wru-admin-scripts', 'wru_admin', array(
+			'ajax_url'    => admin_url( 'admin-ajax.php' ),
 			'copied_text' => __( 'কুরিয়ার নোট কপি হয়েছে!', 'woocommerce-resell-utility' ),
 		) );
 	}
@@ -90,6 +91,7 @@ class WRU_Admin_Settings {
 		$shop_buy    = isset( $_POST[ WRU_Settings::OPTION_ENABLE_SHOP_BUY_NOW ] ) ? 'yes' : 'no';
 		$tools       = isset( $_POST[ WRU_Settings::OPTION_ENABLE_TOOLS ] ) ? 'yes' : 'no';
 		$dashboard   = isset( $_POST[ WRU_Settings::OPTION_ENABLE_DASHBOARD ] ) ? 'yes' : 'no';
+		$cancel_fee  = isset( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ? (float) sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ) : 10.0;
 		$market_lbl  = isset( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ) : '';
 		$resell_lbl  = isset( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ) : '';
 		$inv_store   = isset( $_POST['wru_invoice_store_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_invoice_store_name'] ) ) : '';
@@ -103,6 +105,7 @@ class WRU_Admin_Settings {
 		update_option( WRU_Settings::OPTION_ENABLE_SHOP_BUY_NOW, $shop_buy );
 		update_option( WRU_Settings::OPTION_ENABLE_TOOLS, $tools );
 		update_option( WRU_Settings::OPTION_ENABLE_DASHBOARD, $dashboard );
+		update_option( WRU_Settings::OPTION_CANCELLATION_FEE, max( 0, $cancel_fee ) );
 		update_option( 'wru_invoice_store_name', $inv_store );
 		update_option( 'wru_invoice_store_phone', $inv_phone );
 		update_option( 'wru_invoice_footer_note', $inv_note );
@@ -128,6 +131,7 @@ class WRU_Admin_Settings {
 		$shop_buy    = WRU_Settings::is_shop_buy_now_enabled();
 		$tools       = WRU_Settings::are_product_tools_enabled();
 		$dashboard   = WRU_Settings::is_dashboard_enabled();
+		$cancel_fee  = WRU_Settings::get_cancellation_fee();
 		$market_lbl  = WRU_Settings::get_market_label();
 		$resell_lbl  = WRU_Settings::get_reseller_label();
 		$currency    = get_woocommerce_currency_symbol();
@@ -197,6 +201,19 @@ class WRU_Admin_Settings {
 									<strong><?php esc_html_e( 'পাইকারি দামের নিচে বিক্রি বন্ধ রাখুন', 'woocommerce-resell-utility' ); ?></strong>
 								</label>
 								<p class="description"><?php esc_html_e( 'রিসেলার আমাদের পাইকারি মূল্যের চেয়ে কম বিক্রয়মূল্য লিখতে পারবে না।', 'woocommerce-resell-utility' ); ?></p>
+							</td>
+						</tr>
+
+						<tr>
+							<th scope="row">
+								<label for="wru_cancellation_fee"><?php esc_html_e( 'অর্ডার বাতিল / রিটার্ন কর্তন ফি', 'woocommerce-resell-utility' ); ?></label>
+							</th>
+							<td>
+								<div class="wru-currency-input-inline">
+									<span><?php echo esc_html( $currency ); ?></span>
+									<input type="number" step="any" min="0" name="<?php echo esc_attr( WRU_Settings::OPTION_CANCELLATION_FEE ); ?>" id="wru_cancellation_fee" value="<?php echo esc_attr( $cancel_fee ); ?>" class="regular-text" />
+								</div>
+								<p class="description"><?php esc_html_e( 'কোনো অর্ডার বাতিল বা রিটার্ন হলে রিসেলারের একাউন্ট হতে প্যাকেজিং খরচের সাথে অতিরিক্ত এই ডেলিভারি চার্জ মাইনাস হবে (ডিফল্ট: ১০ ৳)।', 'woocommerce-resell-utility' ); ?></p>
 							</td>
 						</tr>
 					</table>
@@ -321,6 +338,20 @@ class WRU_Admin_Settings {
 							</td>
 						</tr>
 					</table>
+				</div>
+
+				<!-- Long-Term Data Persistence & Database Architecture Card -->
+				<div class="wru-settings-card" style="border-left: 4px solid #16a34a; background: #f0fdf4;">
+					<h2 style="color: #166534;"><?php esc_html_e( 'ডাটাবেজ স্থায়িত্ব ও আর্কিটেকচার সুরক্ষা (Data Persistence Guarantee)', 'woocommerce-resell-utility' ); ?></h2>
+					<p style="color: #374151; font-size: 13px; line-height: 1.6; margin-bottom: 12px;">
+						<?php esc_html_e( 'এই প্লাগইনের সম্পূর্ণ ডেটাবেজ আর্কিটেকচার ওয়ার্ডপ্রেস ও WooCommerce-এর অফিসিয়াল স্ট্যান্ডার্ড (HPOS & Post/User Meta) মেনে তৈরি। প্লাগইন সাময়িক ডিজেবল/ডিঅ্যাক্টিভ করলে, এমনকি ওয়ার্ডপ্রেস হতে প্লাগইন ডিলিট করে দিলেও আপনার কোনো রিসেলারের হিসাব, ব্যালেন্স হিস্ট্রি, ক্যাশআউট রেকর্ড বা অর্ডারের কালেকশন ডেটা ডাটাবেজ থেকে মুছে যাবে না।', 'woocommerce-resell-utility' ); ?>
+					</p>
+					<ul style="color: #1f2937; font-size: 13px; line-height: 1.8; margin-left: 20px; list-style-type: disc;">
+						<li><strong><?php esc_html_e( 'অর্ডার ও কালেকশন ডেটা:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'WooCommerce অর্ডার মেটাবেসে স্থায়ীভাবে সংরক্ষিত (HPOS ও ক্লাসিক উভয় টেবিল সমর্থিত)।', 'woocommerce-resell-utility' ); ?></li>
+						<li><strong><?php esc_html_e( 'রিসেলার ব্যালেন্স ও অডিট লেজার:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'ওয়ার্ডপ্রেস ইউজার মেটা ও অর্ডার হিস্ট্রির সাথে সংযুক্ত, যা কখনো ধ্বংস হয় না।', 'woocommerce-resell-utility' ); ?></li>
+						<li><strong><?php esc_html_e( 'ক্যাশআউট হিস্ট্রি:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'কাস্টম পোস্ট টাইপ (wru_cashout)-এ সেভ থাকে, যা সাইট ব্যাকআপে স্বাভাবিকভাবেই অন্তর্ভুক্ত থাকে।', 'woocommerce-resell-utility' ); ?></li>
+						<li><strong><?php esc_html_e( 'ভবিষ্যতে পুনরায় ইন্সটল:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'প্লাগইন ডিলিট করার পর ভবিষ্যতে আবার আপলোড ও অ্যাক্টিভ করলে পূর্বের সকল তথ্য সাথে সাথে পুনরায় লোড হয়ে যাবে।', 'woocommerce-resell-utility' ); ?></li>
+					</ul>
 				</div>
 
 				<p class="submit">

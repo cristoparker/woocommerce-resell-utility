@@ -227,7 +227,7 @@
 	}
 }
 
-/* Suppress any theme / WooCommerce Blocks "Save" or "Previous price" discount badges on cart and checkout */
+/* Suppress all save / discount badges and regular strikethrough prices on cart and checkout */
 .woocommerce-checkout .saved-sale-price,
 .woocommerce-checkout .you-save,
 .woocommerce-checkout .saving-badge,
@@ -235,10 +235,14 @@
 .woocommerce-checkout .discount-info,
 .woocommerce-checkout .save-price,
 .woocommerce-checkout .discount-amount,
+.woocommerce-checkout [class*="save"],
+.woocommerce-checkout [class*="discount"],
 .woocommerce-cart .saved-sale-price,
 .woocommerce-cart .you-save,
 .woocommerce-cart .saving-badge,
 .woocommerce-cart .save-price,
+.woocommerce-cart [class*="save"],
+.woocommerce-cart [class*="discount"],
 .wc-block-components-sale-badge,
 .wc-block-components-product-price__regular,
 .wc-block-components-product-sale-badge,
@@ -254,8 +258,49 @@
 .woocommerce-cart .screen-reader-text,
 .woocommerce-checkout .screen-reader-text,
 [class*="sale-badge"],
-[class*="discount-badge"] {
+[class*="discount-badge"],
+[class*="saved-price"],
+[class*="save-price"],
+[class*="you-save"],
+[class*="save-amount"],
+[class*="saving-badge"],
+.saved-sale-price,
+.you-save,
+.saving-badge,
+.cart-discount,
+.discount-info,
+.save-price,
+.discount-amount {
 	display: none !important;
+	visibility: hidden !important;
+	opacity: 0 !important;
+	height: 0 !important;
+	overflow: hidden !important;
+	line-height: 0 !important;
+	font-size: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+}
+
+/* Checkout Guidance Banner */
+.wru-checkout-guidance-banner {
+	background: #f0fdf4;
+	border: 1.5px solid #86efac;
+	border-radius: 8px;
+	padding: 14px 18px;
+	margin-bottom: 24px;
+}
+.wru-checkout-guidance-banner h4 {
+	margin: 0 0 6px 0;
+	color: #166534;
+	font-size: 15px;
+	font-weight: 700;
+}
+.wru-checkout-guidance-banner p {
+	margin: 0;
+	color: #15803d;
+	font-size: 13.5px;
+	line-height: 1.6;
 }
 
 /* Checkout Page Reseller Selling Price Editor */
@@ -1074,3 +1119,20 @@
 	text-align: center;
 	color: #64748b;
 }
+
+.wru-pulse-highlight {
+	animation: wruPulseGlow 1.5s ease;
+}
+
+@keyframes wruPulseGlow {
+	0% {
+		box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.5);
+	}
+	50% {
+		box-shadow: 0 0 0 10px rgba(2, 132, 199, 0.2);
+	}
+	100% {
+		box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+	}
+}
+

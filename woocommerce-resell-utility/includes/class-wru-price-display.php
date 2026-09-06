@@ -103,6 +103,11 @@ class WRU_Price_Display {
 			return $price_html;
 		}
 
+		// In Cart and Checkout, output ONLY the active single price (eliminating any dual price or regular vs sale comparison)
+		if ( is_cart() || is_checkout() || did_action( 'woocommerce_before_cart' ) || did_action( 'woocommerce_before_checkout_form' ) ) {
+			return wc_price( $product->get_price() );
+		}
+
 		if ( '' === $product->get_price() && '' === $product->get_regular_price() ) {
 			return $price_html;
 		}

@@ -89,6 +89,7 @@ final class WooCommerce_Resell_Utility {
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-dashboard.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-admin-settings.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-invoice-email.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-manager.php';
 	}
 
 	/**
@@ -116,6 +117,7 @@ final class WooCommerce_Resell_Utility {
 		WRU_Reseller_Dashboard::init();
 		WRU_Admin_Settings::init();
 		WRU_Invoice_Email::init();
+		WRU_Reseller_Manager::init();
 
 		// Register frontend scripts and styles.
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
@@ -182,6 +184,17 @@ final class WooCommerce_Resell_Utility {
 	 */
 	public function activate() {
 		WRU_Reseller_Dashboard::init();
+		if ( ! get_role( 'wru_reseller' ) ) {
+			add_role(
+				'wru_reseller',
+				__( 'রিসেলার', 'woocommerce-resell-utility' ),
+				array(
+					'read'         => true,
+					'edit_posts'   => false,
+					'delete_posts' => false,
+				)
+			);
+		}
 		add_rewrite_endpoint( WRU_Reseller_Dashboard::ENDPOINT, EP_ROOT | EP_PAGES );
 		flush_rewrite_rules();
 	}

@@ -18,6 +18,7 @@ class WRU_Settings {
 	const OPTION_ENABLE_SHOP_BUY_NOW = 'wru_enable_shop_buy_now';
 	const OPTION_ENABLE_TOOLS        = 'wru_enable_product_tools';
 	const OPTION_ENABLE_DASHBOARD    = 'wru_enable_reseller_dashboard';
+	const OPTION_CANCELLATION_FEE    = 'wru_cancellation_fee';
 	const OPTION_MARKET_LABEL        = 'wru_market_price_label';
 	const OPTION_RESELLER_LABEL      = 'wru_reseller_price_label';
 
@@ -100,5 +101,14 @@ class WRU_Settings {
 	 */
 	public static function get_reseller_label() {
 		return get_option( self::OPTION_RESELLER_LABEL, __( 'Reseller Price:', 'woocommerce-resell-utility' ) );
+	}
+
+	/**
+	 * Get order cancellation & return delivery penalty fee.
+	 *
+	 * @return float
+	 */
+	public static function get_cancellation_fee() {
+		return (float) get_option( self::OPTION_CANCELLATION_FEE, 10.0 );
 	}
 }

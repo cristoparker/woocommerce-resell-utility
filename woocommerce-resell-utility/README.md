@@ -87,6 +87,27 @@ woocommerce-resell-utility/
 ├── readme.txt                             # WordPress standard repository readme
 └── README.md                              # Complete documentation
 ```
+### 10. Reseller Ecosystem & Cashout Workflow
+- **Custom Role:** Dedicated "রিসেলার" (`wru_reseller`) role restricting access to approved partners.
+- **Admin Reseller Hub (`WooCommerce -> রিসেলার তালিকা ও ব্যালেন্স`):** Complete reseller directory, balances, order stats, and transaction history.
+- **Editable Reseller Balance & Audit Ledger:** Store owners can manually credit bonuses or debit adjustments with full audit reasons recorded in an immutable ledger.
+- **Reseller Cashout System:**
+  - Reseller requests cashout from `/my-account/reseller-dashboard/`.
+  - Request remains *Pending* with funds on hold.
+  - Admin reviews and marks as *Paid* with Transaction ID (TrxID) or rejects with reason.
+  - Funds are permanently deducted upon completion.
+- **Reseller Company Name on Packaging Labels:**
+  - Invoices and parcel box labels display the **Reseller's Company / Shop Name** and hotline as the sender, ensuring wholesale supplier anonymity (never outputs wholesale store name).
+  - Admins can print or download the packaging slip in one click directly from the Order Details page.
+
+---
+
+## Data Persistence & Long-Term Architecture Guarantee
+
+- **100% Native Architecture:** All plugin data is stored using official WordPress and WooCommerce data structures (`wp_posts`, `wp_postmeta`, `wp_usermeta`, `wp_options`, `wp_wc_orders_meta`). No unstable or non-standard custom tables are created.
+- **Safe from Deactivation & Deletion:** Deactivating, disabling, or deleting the plugin **never drops or destroys** historical reseller earnings, order collection data, balance ledgers, or cashout history.
+- **Reinstall & Reload:** If the plugin is removed and re-installed in the future, all data immediately and automatically re-syncs and displays without data loss.
+- **Backup & Migration Ready:** Because standard tables are used, all data is automatically captured by standard WordPress backup tools (UpdraftPlus, Duplicator, All-in-One WP Migration, and standard mysqldump).
 
 ---
 
@@ -110,3 +131,4 @@ Navigate to **WordPress Admin -> WooCommerce -> Resell Utility**:
 - **HPOS:** 100% compatible with High-Performance Order Storage (`custom_order_tables`)
 - **Cart & Checkout Blocks:** Fully compatible
 - **PHP:** 7.4, 8.0, 8.1, 8.2, 8.3+
+

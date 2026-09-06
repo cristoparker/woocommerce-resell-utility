@@ -388,15 +388,17 @@
 
 		function cleanCartCheckoutBadges() {
 			if ($('body').hasClass('woocommerce-cart') || $('body').hasClass('woocommerce-checkout')) {
-				$('.wc-block-components-sale-badge, .wc-block-components-product-price__regular, .wc-block-components-product-sale-badge').remove();
-				$('.woocommerce-cart del, .woocommerce-checkout del, .wc-block-cart del, .wc-block-checkout del').remove();
+				$('.wc-block-components-sale-badge, .wc-block-components-product-price__regular, .wc-block-components-product-sale-badge, [class*="sale-badge"], [class*="discount-badge"], [class*="save-amount"]').remove();
+				$('.woocommerce-cart del, .woocommerce-checkout del, .wc-block-cart del, .wc-block-checkout del, .shop_table del, #order_review del').remove();
 
-				// Clean text containing 'Previous price:' or 'Save '
-				$('.wc-block-components-product-price, .product-price, .product-subtotal, td.product-price, td.product-subtotal').find('*').each(function() {
+				// Clean text containing 'Previous price:', 'Discounted price:', 'Save ', 'You Save', or 'সাশ্রয়'
+				$('.wc-block-components-product-price, .product-price, .product-subtotal, td.product-price, td.product-subtotal, .order-total, .cart_item, .wc-block-cart-items, .wc-block-checkout__order-summary').find('span, p, div, small, strong, em, b').each(function() {
 					var $el = $(this);
-					var text = $el.text().trim();
-					if (text.indexOf('Previous price:') !== -1 || text.indexOf('Discounted price:') !== -1 || text.indexOf('Save ') === 0) {
-						$el.hide();
+					if ($el.children().length === 0) {
+						var text = $el.text().trim();
+						if (text.indexOf('Previous price:') !== -1 || text.indexOf('Discounted price:') !== -1 || text.indexOf('Save ') === 0 || text.indexOf('You Save') !== -1 || text.indexOf('সাশ্রয়') !== -1) {
+							$el.css({ display: 'none', visibility: 'hidden' }).remove();
+						}
 					}
 				});
 			}
@@ -405,6 +407,36 @@
 		cleanCartCheckoutBadges();
 		$(document).ajaxComplete(cleanCartCheckoutBadges);
 
+		// Real-time MutationObserver ensures even React/Vue/Blocks dynamic renders are caught immediately
+		if (window.MutationObserver && document.body) {
+			var saveBadgeObserver = new MutationObserver(function() {
+				cleanCartCheckoutBadges();
+			});
+			saveBadgeObserver.observe(document.body, { childList: true, subtree: true });
+		}
+
+
+		/* ==========================================================================
+		   7. Reseller Dashboard: Smooth Scroll to Cashout Form
+		   ========================================================================== */
+
+		$(document).on('click', '.wru-cashout-trigger-btn', function(e) {
+			var $target = $('#wru-cashout-section');
+			if ($target.length) {
+				e.preventDefault();
+				$('html, body').animate({
+					scrollTop: $target.offset().top - 40
+				}, 400, function() {
+					$('#wru_cashout_amount').focus();
+					$target.addClass('wru-pulse-highlight');
+					setTimeout(function() {
+						$target.removeClass('wru-pulse-highlight');
+					}, 1500);
+				});
+			}
+		});
+
 	});
 })(jQuery);
+
 

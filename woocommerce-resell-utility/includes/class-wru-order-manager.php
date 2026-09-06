@@ -43,11 +43,17 @@ class WRU_Order_Manager {
 		// Line item meta creation during checkout (HPOS & classic).
 		add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'create_order_line_item_meta' ), 10, 4 );
 
-		// Calculate & store order-level reseller totals on order creation.
+		// Calculate & store order-level reseller totals on order creation & status change.
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'calculate_order_reseller_totals' ), 10, 3 );
+		add_action( 'woocommerce_order_status_changed', array( $this, 'on_order_status_changed' ), 10, 4 );
+
+		// Localize and customize checkout fields for dropshipping resellers.
+		add_filter( 'woocommerce_checkout_fields', array( $this, 'customize_checkout_fields' ), 999 );
+		add_action( 'woocommerce_before_checkout_form', array( $this, 'render_checkout_banner' ), 5 );
 
 		// Admin Order details Meta Box (Supports both HPOS and traditional CPT).
 		add_action( 'add_meta_boxes', array( $this, 'register_admin_order_meta_box' ) );
+		add_action( 'woocommerce_process_shop_order_meta', array( $this, 'save_admin_order_reseller_meta' ), 15, 2 );
 
 		// Frontend order received and view order profit summary.
 		add_action( 'woocommerce_order_details_after_order_table', array( $this, 'render_frontend_order_summary' ), 15 );
@@ -227,30 +233,33 @@ class WRU_Order_Manager {
 		$reseller_price = 0.0;
 		if ( isset( $_POST['wru_checkout_prices'][ $cart_item_key ] ) && '' !== trim( $_POST['wru_checkout_prices'][ $cart_item_key ] ) ) {
 			$reseller_price = (float) sanitize_text_field( wp_unslash( $_POST['wru_checkout_prices'][ $cart_item_key ] ) );
-		} elseif ( isset( $values['wru_reseller_price'] ) ) {
+		} elseif ( isset( $values['wru_reseller_price'] ) && (float) $values['wru_reseller_price'] > 0 ) {
 			$reseller_price = (float) $values['wru_reseller_price'];
 		}
 
-		if ( $reseller_price > 0 ) {
-			$product         = $values['data'];
-			$wholesale_price = (float) $product->get_price();
-			$quantity        = (int) $item->get_quantity();
+		$product         = $values['data'];
+		$wholesale_price = (float) $product->get_price();
+		$quantity        = (int) $item->get_quantity();
 
-			$packaging_mode = WRU_Settings::get_packaging_type();
-			$unit_packaging = ( 'item' === $packaging_mode ) ? WRU_Settings::get_packaging_fee() : 0;
-			$unit_profit    = max( 0, $reseller_price - $wholesale_price - $unit_packaging );
-			$total_profit   = $unit_profit * $quantity;
-
-			// Internal hidden meta.
-			$item->add_meta_data( '_wru_reseller_price', $reseller_price, true );
-			$item->add_meta_data( '_wru_wholesale_price', $wholesale_price, true );
-			$item->add_meta_data( '_wru_unit_profit', $unit_profit, true );
-			$item->add_meta_data( '_wru_line_profit', $total_profit, true );
-
-			// Visible meta for invoices, packaging slips, and emails.
-			$item->add_meta_data( __( 'কাস্টমার কালেকশন মূল্য', 'woocommerce-resell-utility' ), wc_price( $reseller_price ), true );
-			$item->add_meta_data( __( 'রিসেলার লাভ (মোট)', 'woocommerce-resell-utility' ), wc_price( $total_profit ), true );
+		// If no reseller price was provided, fallback to regular/market price
+		if ( $reseller_price <= 0 ) {
+			$reseller_price = (float) $product->get_regular_price() ?: $wholesale_price;
 		}
+
+		$packaging_mode = WRU_Settings::get_packaging_type();
+		$unit_packaging = ( 'item' === $packaging_mode ) ? WRU_Settings::get_packaging_fee() : 0;
+		$unit_profit    = max( 0, $reseller_price - $wholesale_price - $unit_packaging );
+		$total_profit   = $unit_profit * $quantity;
+
+		// Internal hidden meta.
+		$item->add_meta_data( '_wru_reseller_price', $reseller_price, true );
+		$item->add_meta_data( '_wru_wholesale_price', $wholesale_price, true );
+		$item->add_meta_data( '_wru_unit_profit', $unit_profit, true );
+		$item->add_meta_data( '_wru_line_profit', $total_profit, true );
+
+		// Visible meta for invoices, packaging slips, and emails.
+		$item->add_meta_data( __( 'কাস্টমার কালেকশন মূল্য', 'woocommerce-resell-utility' ), wc_price( $reseller_price ), true );
+		$item->add_meta_data( __( 'রিসেলার লাভ (মোট)', 'woocommerce-resell-utility' ), wc_price( $total_profit ), true );
 	}
 
 	/**
@@ -268,7 +277,6 @@ class WRU_Order_Manager {
 			return;
 		}
 
-		$has_resell_items = false;
 		$total_collection = 0.0;
 		$total_wholesale  = 0.0;
 		$total_qty        = 0;
@@ -278,44 +286,201 @@ class WRU_Order_Manager {
 			$qty            = (int) $item->get_quantity();
 			$total_qty     += $qty;
 
-			if ( '' !== $reseller_price && false !== $reseller_price ) {
-				$has_resell_items = true;
-				$res_price        = (float) $reseller_price;
-				$wholesale_price  = (float) $item->get_meta( '_wru_wholesale_price', true );
-
+			if ( '' !== $reseller_price && false !== $reseller_price && (float) $reseller_price > 0 ) {
+				$res_price       = (float) $reseller_price;
+				$wholesale_price = (float) $item->get_meta( '_wru_wholesale_price', true );
+				if ( $wholesale_price <= 0 ) {
+					$prod            = $item->get_product();
+					$wholesale_price = $prod ? (float) $prod->get_price() : (float) $item->get_subtotal() / max( 1, $qty );
+				}
 				$total_collection += ( $res_price * $qty );
 				$total_wholesale  += ( $wholesale_price * $qty );
 			} else {
-				// Fallback to standard item subtotal if not entered.
-				$total_collection += (float) $item->get_subtotal();
-				$total_wholesale  += (float) $item->get_subtotal();
+				// Fallback: use product regular price (market price) if not explicitly set
+				$prod            = $item->get_product();
+				$wholesale_price = $prod ? (float) $prod->get_price() : (float) $item->get_subtotal() / max( 1, $qty );
+				$res_price       = $prod ? (float) $prod->get_regular_price() : $wholesale_price;
+				if ( $res_price <= 0 ) {
+					$res_price = $wholesale_price;
+				}
+				$total_collection += ( $res_price * $qty );
+				$total_wholesale  += ( $wholesale_price * $qty );
 			}
-		}
-
-		if ( ! $has_resell_items ) {
-			return;
 		}
 
 		$packaging_fee_rate = WRU_Settings::get_packaging_fee();
 		$packaging_mode     = WRU_Settings::get_packaging_type();
-
-		$total_packaging = ( 'item' === $packaging_mode ) ? ( $packaging_fee_rate * $total_qty ) : $packaging_fee_rate;
+		$total_packaging    = ( 'item' === $packaging_mode ) ? ( $packaging_fee_rate * $total_qty ) : $packaging_fee_rate;
 
 		// Courier COD: Total customer selling price + shipping charge.
-		$shipping_total = (float) $order->get_shipping_total();
+		$shipping_total = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
 		$cod_collection = $total_collection + $shipping_total;
 
-		// Reseller Payout = (Customer Collection - Shipping) - Wholesale Cost - Packaging Cost.
+		// Reseller Profit = Customer Items Selling Total - Wholesale Cost - Packaging Cost.
 		$reseller_profit = max( 0, $total_collection - $total_wholesale - $total_packaging );
 
 		// Save meta to order (HPOS and classic).
 		$order->update_meta_data( '_wru_is_resell_order', 'yes' );
 		$order->update_meta_data( '_wru_total_collection_amount', $cod_collection );
 		$order->update_meta_data( '_wru_customer_items_total', $total_collection );
+		$order->update_meta_data( '_wru_shipping_charge', $shipping_total );
 		$order->update_meta_data( '_wru_total_wholesale_amount', $total_wholesale );
 		$order->update_meta_data( '_wru_total_packaging_fee', $total_packaging );
 		$order->update_meta_data( '_wru_total_reseller_profit', $reseller_profit );
+
+		// Capture Reseller Company Name & Hotline for the packaging label
+		$reseller_id = $order->get_customer_id();
+		$company     = '';
+		$phone       = '';
+
+		if ( isset( $_POST['billing_company'] ) && ! empty( trim( $_POST['billing_company'] ) ) ) {
+			$company = sanitize_text_field( wp_unslash( $_POST['billing_company'] ) );
+		} elseif ( isset( $_POST['wru_reseller_company_name'] ) && ! empty( trim( $_POST['wru_reseller_company_name'] ) ) ) {
+			$company = sanitize_text_field( wp_unslash( $_POST['wru_reseller_company_name'] ) );
+		} elseif ( $reseller_id ) {
+			$company = get_user_meta( $reseller_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $reseller_id, 'billing_company', true );
+		}
+
+		if ( isset( $_POST['billing_reseller_phone'] ) && ! empty( trim( $_POST['billing_reseller_phone'] ) ) ) {
+			$phone = sanitize_text_field( wp_unslash( $_POST['billing_reseller_phone'] ) );
+		} elseif ( isset( $_POST['wru_reseller_phone'] ) && ! empty( trim( $_POST['wru_reseller_phone'] ) ) ) {
+			$phone = sanitize_text_field( wp_unslash( $_POST['wru_reseller_phone'] ) );
+		} elseif ( $reseller_id ) {
+			$phone = get_user_meta( $reseller_id, '_wru_reseller_phone', true ) ?: get_user_meta( $reseller_id, '_wru_payout_number', true );
+		}
+
+		if ( ! empty( $company ) ) {
+			$order->update_meta_data( '_wru_reseller_company_name', $company );
+			if ( $reseller_id ) {
+				update_user_meta( $reseller_id, '_wru_reseller_company_name', $company );
+			}
+		}
+
+		if ( ! empty( $phone ) ) {
+			$order->update_meta_data( '_wru_reseller_phone', $phone );
+			if ( $reseller_id ) {
+				update_user_meta( $reseller_id, '_wru_reseller_phone', $phone );
+			}
+		}
+
 		$order->save();
+	}
+
+	/**
+	 * On order status change, refresh reseller totals and cancellation penalties.
+	 */
+	public function on_order_status_changed( $order_id, $from, $to, $order = null ) {
+		$this->calculate_order_reseller_totals( $order_id, array(), $order );
+	}
+
+	/**
+	 * Customize checkout fields in Bengali for dropshipping resellers.
+	 *
+	 * @param array $fields Checkout fields array.
+	 * @return array
+	 */
+	public function customize_checkout_fields( $fields ) {
+		// Billing Fields
+		if ( isset( $fields['billing']['billing_first_name'] ) ) {
+			$fields['billing']['billing_first_name']['label']       = __( 'কাস্টমারের নাম (যার কাছে পার্সেল পৌঁছাবে)', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_first_name']['placeholder'] = __( 'কাস্টমারের পুরো নাম লিখুন', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['billing']['billing_last_name'] ) ) {
+			$fields['billing']['billing_last_name']['label']       = __( 'কাস্টমারের শেষ নাম / পদবি (ঐচ্ছিক)', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_last_name']['placeholder'] = __( 'ঐচ্ছিক', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_last_name']['required']    = false;
+		}
+		if ( isset( $fields['billing']['billing_phone'] ) ) {
+			$fields['billing']['billing_phone']['label']       = __( 'কাস্টমারের মোবাইল নম্বর (কুরিয়ারে কল করার জন্য)', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_phone']['placeholder'] = __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['billing']['billing_email'] ) ) {
+			$fields['billing']['billing_email']['label']       = __( 'রিসেলারের ইমেইল এড্রেস (আপনার ইমেইল - যেখানে আপডেট যাবে)', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_email']['placeholder'] = __( 'আপনার (রিসেলারের) ইমেইল লিখুন', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_email']['description'] = __( 'অর্ডারের যাবতীয় কনফার্মেশন ও প্রফিট হিসাব এই ইমেইলে যাবে।', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['billing']['billing_address_1'] ) ) {
+			$fields['billing']['billing_address_1']['label']       = __( 'কাস্টমারের পূর্ণ ডেলিভারি ঠিকানা', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_address_1']['placeholder'] = __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম ও থানা লিখুন', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['billing']['billing_city'] ) ) {
+			$fields['billing']['billing_city']['label']       = __( 'জেলা / শহর', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_city']['placeholder'] = __( 'যেমন: ঢাকা, চট্টগ্রাম, সিলেট ইত্যাদি', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['billing']['billing_state'] ) ) {
+			$fields['billing']['billing_state']['label'] = __( 'বিভাগ', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['billing']['billing_postcode'] ) ) {
+			$fields['billing']['billing_postcode']['label']       = __( 'পোস্টাল কোড / জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_postcode']['placeholder'] = __( 'যেমন: 1205', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_postcode']['required']    = false;
+		}
+		if ( isset( $fields['billing']['billing_company'] ) ) {
+			$fields['billing']['billing_company']['label']       = __( 'আপনার শপ / পেজ / কোম্পানির নাম (প্যাকেজে প্রেরক হিসেবে থাকবে)', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_company']['placeholder'] = __( 'যেমন: Trendz Fashion BD বা আপনার পেজের নাম', 'woocommerce-resell-utility' );
+			$fields['billing']['billing_company']['required']    = false;
+			if ( is_user_logged_in() ) {
+				$saved_company = get_user_meta( get_current_user_id(), '_wru_reseller_company_name', true ) ?: get_user_meta( get_current_user_id(), 'billing_company', true );
+				if ( ! empty( $saved_company ) ) {
+					$fields['billing']['billing_company']['default'] = $saved_company;
+				}
+			}
+		}
+
+		$fields['billing']['billing_reseller_phone'] = array(
+			'label'       => __( 'আপনার শপ হটলাইন / মোবাইল নম্বর (লেবেলে প্রেরকের নম্বর)', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' ),
+			'required'    => false,
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 35,
+			'default'     => is_user_logged_in() ? get_user_meta( get_current_user_id(), '_wru_reseller_phone', true ) : '',
+		);
+
+		// Shipping Fields
+		if ( isset( $fields['shipping']['shipping_first_name'] ) ) {
+			$fields['shipping']['shipping_first_name']['label']       = __( 'কাস্টমারের নাম', 'woocommerce-resell-utility' );
+			$fields['shipping']['shipping_first_name']['placeholder'] = __( 'কাস্টমারের পুরো নাম লিখুন', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['shipping']['shipping_phone'] ) ) {
+			$fields['shipping']['shipping_phone']['label']       = __( 'কাস্টমারের মোবাইল নম্বর', 'woocommerce-resell-utility' );
+			$fields['shipping']['shipping_phone']['placeholder'] = __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['shipping']['shipping_address_1'] ) ) {
+			$fields['shipping']['shipping_address_1']['label']       = __( 'কাস্টমারের পূর্ণ ডেলিভারি ঠিকানা', 'woocommerce-resell-utility' );
+			$fields['shipping']['shipping_address_1']['placeholder'] = __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম ও থানা লিখুন', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['shipping']['shipping_city'] ) ) {
+			$fields['shipping']['shipping_city']['label']       = __( 'জেলা / শহর', 'woocommerce-resell-utility' );
+			$fields['shipping']['shipping_city']['placeholder'] = __( 'যেমন: ঢাকা, চট্টগ্রাম', 'woocommerce-resell-utility' );
+		}
+		if ( isset( $fields['shipping']['shipping_postcode'] ) ) {
+			$fields['shipping']['shipping_postcode']['label']    = __( 'পোস্টাল কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' );
+			$fields['shipping']['shipping_postcode']['required'] = false;
+		}
+
+		// Order Notes
+		if ( isset( $fields['order']['order_comments'] ) ) {
+			$fields['order']['order_comments']['label']       = __( 'কুরিয়ার ডেলিভারি সংক্রান্ত বিশেষ নোট (ঐচ্ছিক)', 'woocommerce-resell-utility' );
+			$fields['order']['order_comments']['placeholder'] = __( 'যেমন: পার্সেল চেক করে ডেলিভারি দিবেন, সকাল ১০টার পর কল দিবেন ইত্যাদি।', 'woocommerce-resell-utility' );
+		}
+
+		return $fields;
+	}
+
+	/**
+	 * Render clear dropshipping instructions banner at the top of Checkout.
+	 */
+	public function render_checkout_banner() {
+		?>
+		<div class="wru-checkout-guidance-banner" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+			<h4 style="margin: 0 0 6px 0; color: #166534; font-size: 15px; font-weight: 700;">
+				<?php esc_html_e( 'রিসেলার ড্রপশিপিং অর্ডার ফর্ম', 'woocommerce-resell-utility' ); ?>
+			</h4>
+			<p style="margin: 0; color: #15803d; font-size: 13px; line-height: 1.6;">
+				<?php esc_html_e( 'নিচের ফর্মে আপনার কাস্টমারের নাম, মোবাইল নম্বর এবং পূর্ণ ডেলিভারি ঠিকানা দিন যার কাছে কুরিয়ার পার্সেলটি পৌঁছে দিবে। আর ইমেইল বক্সে আপনার (রিসেলারের) ইমেইল দিন যাতে অর্ডারের সকল আপডেট ও প্রফিট হিসাব আপনার কাছে পৌঁছায়।', 'woocommerce-resell-utility' ); ?>
+			</p>
+		</div>
+		<?php
 	}
 
 	/**
@@ -355,21 +520,48 @@ class WRU_Order_Manager {
 		$packaging       = (float) $order->get_meta( '_wru_total_packaging_fee' );
 		$profit          = (float) $order->get_meta( '_wru_total_reseller_profit' );
 
-		// Fallback calculations if legacy order.
-		if ( ! $is_resell_order ) {
-			$collection = (float) $order->get_total();
-			$profit     = 0.0;
+		// Auto-calculate if missing or zero
+		if ( $collection <= 0 || ! $is_resell_order ) {
+			$this->calculate_order_reseller_totals( $order->get_id(), array(), $order );
+			$collection = (float) $order->get_meta( '_wru_total_collection_amount' );
+			$wholesale  = (float) $order->get_meta( '_wru_total_wholesale_amount' );
+			$packaging  = (float) $order->get_meta( '_wru_total_packaging_fee' );
+			$profit     = (float) $order->get_meta( '_wru_total_reseller_profit' );
 		}
 
-		// Prepare courier note copy text.
-		$customer_name  = $order->get_formatted_billing_full_name();
-		$phone          = $order->get_billing_phone();
-		$address        = $order->get_billing_address_1() . ( $order->get_billing_city() ? ', ' . $order->get_billing_city() : '' );
-		$item_names     = array();
+		// Prepare courier note copy text using recipient customer details
+		$customer_name = $order->get_formatted_shipping_full_name() ?: $order->get_formatted_billing_full_name();
+		$phone         = $order->get_shipping_phone() ?: $order->get_billing_phone();
+		$address       = ( $order->get_shipping_address_1() ?: $order->get_billing_address_1() ) . ( ( $order->get_shipping_city() ?: $order->get_billing_city() ) ? ', ' . ( $order->get_shipping_city() ?: $order->get_billing_city() ) : '' );
+		$item_names    = array();
 		foreach ( $order->get_items() as $item ) {
 			$item_names[] = $item->get_name() . ' x ' . $item->get_quantity();
 		}
 		$items_str = implode( ', ', $item_names );
+
+		// Resolve Reseller Sender details for packaging slip & metabox display
+		$reseller_id      = $order->get_customer_id();
+		$reseller_company = $order->get_meta( '_wru_reseller_company_name' );
+		$reseller_phone   = $order->get_meta( '_wru_reseller_phone' );
+
+		if ( empty( $reseller_company ) && $order->get_billing_company() ) {
+			$reseller_company = $order->get_billing_company();
+		}
+		if ( empty( $reseller_company ) && $reseller_id ) {
+			$reseller_company = get_user_meta( $reseller_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $reseller_id, 'billing_company', true );
+			if ( empty( $reseller_company ) ) {
+				$user_obj = get_userdata( $reseller_id );
+				if ( $user_obj ) {
+					$reseller_company = $user_obj->display_name;
+				}
+			}
+		}
+
+		if ( empty( $reseller_phone ) && $reseller_id ) {
+			$reseller_phone = get_user_meta( $reseller_id, '_wru_reseller_phone', true ) ?: get_user_meta( $reseller_id, '_wru_payout_number', true );
+		}
+
+		$print_invoice_url = WRU_Invoice_Email::get_invoice_url( $order->get_id() );
 
 		$courier_copy_text = sprintf(
 			"কাস্টমার: %s\nমোবাইল: %s\nঠিকানা: %s\nকালেকশন এমাউন্ট (COD): ৳%s\nপণ্য: %s\nনোট: ডেলিভারির সময় কাস্টমার চেক করে নিবেন।",
@@ -381,6 +573,43 @@ class WRU_Order_Manager {
 		);
 		?>
 		<div class="wru-admin-metabox">
+			<!-- Prominent Packaging Slip / Label Print & Download Bar -->
+			<div class="wru-admin-invoice-cta" style="margin-bottom: 20px; padding: 16px 20px; background: #f0fdf4; border: 2px solid #86efac; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+				<div>
+					<div style="font-size: 15px; font-weight: 800; color: #166534; margin-bottom: 2px;">
+						<?php esc_html_e( 'প্যাকেজিং স্লিপ ও কুরিয়ার লেবেল (প্রিন্ট ও ডাউনলোড)', 'woocommerce-resell-utility' ); ?>
+					</div>
+					<div style="font-size: 13px; color: #374151;">
+						<?php printf( esc_html__( 'লেবেলে প্রেরক হিসেবে থাকবে: %s', 'woocommerce-resell-utility' ), '<strong>' . esc_html( $reseller_company ?: __( 'রিসেলার শপ', 'woocommerce-resell-utility' ) ) . '</strong>' ); ?>
+						<?php if ( ! empty( $reseller_phone ) ) : ?>
+							<span> (<?php echo esc_html( $reseller_phone ); ?>)</span>
+						<?php endif; ?>
+					</div>
+				</div>
+				<div>
+					<a href="<?php echo esc_url( $print_invoice_url ); ?>" target="_blank" class="button button-primary" style="background: #16a34a; border-color: #15803d; font-weight: 700; font-size: 14px; padding: 6px 18px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+						<?php esc_html_e( 'প্যাকেজিং স্লিপ প্রিন্ট করুন', 'woocommerce-resell-utility' ); ?>
+					</a>
+				</div>
+			</div>
+
+			<!-- Reseller Brand Info on Packaging Slip Editor -->
+			<div class="wru-admin-reseller-brand-edit" style="margin-bottom: 20px; padding: 14px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px;">
+				<div style="font-weight: 700; color: #1e293b; font-size: 13px; margin-bottom: 8px;">
+					<?php esc_html_e( 'লেবেলের প্রেরক তথ্য (রিসেলারের শপ ও মোবাইল পরিবর্তন করতে পারেন):', 'woocommerce-resell-utility' ); ?>
+				</div>
+				<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+					<div>
+						<label style="font-size: 12px; color: #475569; display: block; margin-bottom: 3px;"><?php esc_html_e( 'শপ / কোম্পানির নাম:', 'woocommerce-resell-utility' ); ?></label>
+						<input type="text" name="wru_reseller_company_name" value="<?php echo esc_attr( $reseller_company ); ?>" class="widefat" placeholder="যেমন: Fashion Hub BD" />
+					</div>
+					<div>
+						<label style="font-size: 12px; color: #475569; display: block; margin-bottom: 3px;"><?php esc_html_e( 'শপ হটলাইন / ফোন:', 'woocommerce-resell-utility' ); ?></label>
+						<input type="text" name="wru_reseller_phone" value="<?php echo esc_attr( $reseller_phone ); ?>" class="widefat" placeholder="যেমন: 017XXXXXXXX" />
+					</div>
+				</div>
+			</div>
 			<div class="wru-admin-cards-grid">
 				<div class="wru-admin-stat-card wru-card-collection">
 					<span class="wru-stat-title"><?php esc_html_e( 'কুরিয়ার কালেকশন (COD Amount)', 'woocommerce-resell-utility' ); ?></span>
@@ -469,5 +698,30 @@ class WRU_Order_Manager {
 			</p>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Save admin edited reseller company name & phone when saving order in WP-Admin.
+	 *
+	 * @param int           $order_id Order ID.
+	 * @param \WP_Post|null $post Post object if legacy CPT.
+	 */
+	public function save_admin_order_reseller_meta( $order_id, $post = null ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+
+		if ( isset( $_POST['wru_reseller_company_name'] ) ) {
+			$company = sanitize_text_field( wp_unslash( $_POST['wru_reseller_company_name'] ) );
+			$order->update_meta_data( '_wru_reseller_company_name', $company );
+		}
+
+		if ( isset( $_POST['wru_reseller_phone'] ) ) {
+			$phone = sanitize_text_field( wp_unslash( $_POST['wru_reseller_phone'] ) );
+			$order->update_meta_data( '_wru_reseller_phone', $phone );
+		}
+
+		$order->save();
 	}
 }
