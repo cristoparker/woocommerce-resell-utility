@@ -1,0 +1,153 @@
+/**
+ * WooCommerce Resell Utility - Admin Styles
+ */
+
+/* Admin Order Details Meta Box */
+.wru-admin-metabox {
+	padding: 12px 0;
+}
+
+.wru-admin-cards-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 16px;
+	margin-bottom: 20px;
+}
+
+.wru-admin-stat-card {
+	background: #f8fafc;
+	border: 1px solid #cbd5e1;
+	border-radius: 8px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+}
+
+.wru-admin-stat-card .wru-stat-title {
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: #475569;
+	margin-bottom: 4px;
+}
+
+.wru-admin-stat-card .wru-stat-value {
+	font-size: 1.4rem;
+	font-weight: 800;
+	color: #0f172a;
+	margin-bottom: 4px;
+}
+
+.wru-admin-stat-card .wru-stat-desc {
+	font-size: 0.78rem;
+	color: #64748b;
+}
+
+.wru-card-collection {
+	border-left: 4px solid #0284c7;
+}
+
+.wru-card-wholesale {
+	border-left: 4px solid #64748b;
+}
+
+.wru-card-packaging {
+	border-left: 4px solid #eab308;
+}
+
+.wru-card-profit {
+	border-left: 4px solid #16a34a;
+	background: #f0fdf4;
+}
+
+.wru-profit-val {
+	color: #15803d !important;
+}
+
+/* Courier Note Copy Box */
+.wru-admin-courier-action {
+	background: #f1f5f9;
+	border: 1px dashed #94a3b8;
+	border-radius: 8px;
+	padding: 16px;
+}
+
+.wru-courier-note-box label {
+	display: block;
+	margin-bottom: 8px;
+	color: #1e293b;
+	font-size: 0.9rem;
+}
+
+.wru-courier-note-box textarea {
+	width: 100%;
+	background: #ffffff;
+	font-family: monospace;
+	font-size: 0.9rem;
+	padding: 10px;
+	border: 1px solid #cbd5e1;
+	border-radius: 6px;
+	resize: vertical;
+	box-sizing: border-box;
+}
+
+.wru-btn-copy-courier {
+	margin-top: 12px !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 6px !important;
+	font-weight: 600 !important;
+}
+
+/* Settings Page */
+.wru-settings-wrap {
+	max-width: 900px;
+	margin-top: 20px;
+}
+
+.wru-settings-header {
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid #cbd5e1;
+}
+
+.wru-settings-header h1 {
+	font-size: 1.7rem;
+	font-weight: 700;
+	margin-bottom: 4px;
+}
+
+.wru-settings-subtitle {
+	font-size: 0.95rem;
+	color: #64748b;
+	margin: 0;
+}
+
+.wru-settings-card {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 20px 24px;
+	margin-bottom: 20px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.wru-settings-card h2 {
+	font-size: 1.2rem;
+	font-weight: 700;
+	margin-top: 0;
+	margin-bottom: 8px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid #f1f5f9;
+}
+
+.wru-currency-input-inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.wru-currency-input-inline span {
+	font-weight: 700;
+	font-size: 1.1rem;
+	color: #475569;
+}

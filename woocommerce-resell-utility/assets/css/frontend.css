@@ -1,0 +1,926 @@
+/**
+ * WooCommerce Resell Utility - Frontend Styles
+ *
+ * Scoped, modern, and high-performance styles for dropshipping resellers:
+ * - Market & Reseller Price Display
+ * - Grid Alignment & Action Buttons Fix
+ * - Selling Price Input & Dynamic Profit Breakdown
+ * - Buy Now Button
+ * - Quick Buy Modal
+ * - My Account Reseller Hub & KPI Cards
+ */
+
+/* ==========================================================================
+   1. Market & Reseller Price Display
+   ========================================================================== */
+
+.rpd-product-prices {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0.35em 0;
+	line-height: 1.3;
+	text-align: inherit;
+}
+
+.rpd-product-prices,
+.rpd-product-prices *,
+.woocommerce ul.products li.product .price .rpd-product-prices,
+.woocommerce ul.products li.product .price .rpd-product-prices *,
+.woocommerce div.product p.price .rpd-product-prices,
+.woocommerce div.product p.price .rpd-product-prices *,
+.woocommerce div.product .woocommerce-variation-price .rpd-product-prices,
+.woocommerce div.product .woocommerce-variation-price .rpd-product-prices * {
+	text-decoration: none !important;
+}
+
+.rpd-product-prices .rpd-market-price {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 0.875em;
+	color: #64748b;
+	font-weight: 400;
+}
+
+.rpd-product-prices .rpd-market-price .rpd-price-label {
+	color: #64748b;
+	font-weight: 500;
+	font-size: 0.95em;
+}
+
+.rpd-product-prices .rpd-market-price .rpd-price-value,
+.rpd-product-prices .rpd-market-price .rpd-price-value .woocommerce-Price-amount,
+.rpd-product-prices .rpd-market-price .rpd-price-value .woocommerce-Price-currencySymbol {
+	color: #64748b;
+	font-weight: 500;
+	text-decoration: none !important;
+}
+
+.rpd-product-prices .rpd-reseller-price {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 1.15em;
+	color: #0f172a;
+	font-weight: 700;
+	margin-top: 1px;
+}
+
+.rpd-product-prices .rpd-reseller-price .rpd-price-label {
+	color: #1e293b;
+	font-weight: 600;
+	font-size: 0.9em;
+}
+
+.rpd-product-prices .rpd-reseller-price .rpd-price-value,
+.rpd-product-prices .rpd-reseller-price .rpd-price-value .woocommerce-Price-amount,
+.rpd-product-prices .rpd-reseller-price .rpd-price-value .woocommerce-Price-currencySymbol {
+	color: #0f172a;
+	font-weight: 700;
+}
+
+
+/* ==========================================================================
+   2. Product Grid Card Alignment Fix (Requirement 7)
+   Ensures titles, prices, and buttons across uneven cards align horizontally
+   ========================================================================== */
+
+.woocommerce ul.products {
+	display: flex !important;
+	flex-wrap: wrap !important;
+	align-items: stretch !important;
+}
+
+.woocommerce ul.products li.product {
+	display: flex !important;
+	flex-direction: column !important;
+	height: auto !important;
+	box-sizing: border-box !important;
+	float: none !important;
+}
+
+/* Product Title Normalization (clamps to 2 lines for uniform visual height) */
+.woocommerce ul.products li.product .woocommerce-loop-product__title,
+.woocommerce ul.products li.product h2,
+.woocommerce ul.products li.product h3 {
+	font-size: 0.98rem !important;
+	line-height: 1.4 !important;
+	min-height: 2.8em !important;
+	margin-bottom: 8px !important;
+	display: -webkit-box !important;
+	-webkit-line-clamp: 2 !important;
+	-webkit-box-orient: vertical !important;
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
+}
+
+/* Push Price and Buttons to the Bottom of the Card */
+.woocommerce ul.products li.product .price,
+.woocommerce ul.products li.product .rpd-product-prices {
+	margin-top: auto !important;
+	margin-bottom: 12px !important;
+}
+
+/* Shop Loop Action Buttons Container */
+.woocommerce ul.products li.product .wru-loop-actions {
+	display: flex !important;
+	flex-direction: row !important;
+	align-items: center !important;
+	gap: 6px !important;
+	width: 100% !important;
+	margin-top: 0 !important;
+	padding-top: 4px !important;
+}
+
+/* Button Normalization inside Loop */
+.woocommerce ul.products li.product .wru-loop-actions .button,
+.woocommerce ul.products li.product .wru-loop-actions a.button,
+.woocommerce ul.products li.product .wru-loop-actions button.button {
+	flex: 1 1 50% !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 5px !important;
+	margin: 0 !important;
+	padding: 9px 8px !important;
+	font-size: 0.85rem !important;
+	font-weight: 600 !important;
+	line-height: 1.2 !important;
+	border-radius: 6px !important;
+	text-align: center !important;
+	white-space: nowrap !important;
+	box-sizing: border-box !important;
+	transition: all 0.2s ease-in-out !important;
+}
+
+/* Loop Buy Now Button styling */
+.wru-loop-actions .wru-loop-buy-now-btn {
+	background: #0284c7 !important;
+	color: #ffffff !important;
+	border: 1px solid #0284c7 !important;
+}
+
+.wru-loop-actions .wru-loop-buy-now-btn:hover {
+	background: #0369a1 !important;
+	color: #ffffff !important;
+	border-color: #0369a1 !important;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 10px rgba(2, 132, 199, 0.25);
+}
+
+
+/* ==========================================================================
+   3. Single Product Reseller Selling Price Input & Live Profit Box
+   ========================================================================== */
+
+.wru-reseller-box {
+	background: #f8fafc;
+	border: 1.5px solid #cbd5e1;
+	border-radius: 10px;
+	padding: 16px 18px;
+	margin: 18px 0 20px 0;
+	box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+	transition: border-color 0.2s ease;
+}
+
+.wru-reseller-box:focus-within {
+	border-color: #0284c7;
+	box-shadow: 0 4px 14px rgba(2, 132, 199, 0.12);
+}
+
+.wru-box-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 10px;
+}
+
+.wru-resell-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	background: #e0f2fe;
+	color: #0369a1;
+	font-size: 0.75rem;
+	font-weight: 700;
+	padding: 3px 8px;
+	border-radius: 9999px;
+	letter-spacing: 0.02em;
+}
+
+.wru-input-label {
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: #1e293b;
+	margin: 0;
+	cursor: pointer;
+}
+
+.wru-required {
+	color: #ef4444;
+	font-weight: bold;
+}
+
+.wru-input-group {
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: 100%;
+}
+
+.wru-input-prefix {
+	position: absolute;
+	left: 14px;
+	font-size: 1.1rem;
+	font-weight: 700;
+	color: #64748b;
+	pointer-events: none;
+}
+
+.wru-reseller-input {
+	width: 100% !important;
+	padding: 11px 14px 11px 36px !important;
+	font-size: 1.1rem !important;
+	font-weight: 700 !important;
+	color: #0f172a !important;
+	background: #ffffff !important;
+	border: 1.5px solid #94a3b8 !important;
+	border-radius: 8px !important;
+	box-sizing: border-box !important;
+	transition: all 0.2s ease !important;
+}
+
+.wru-reseller-input:focus {
+	border-color: #0284c7 !important;
+	outline: none !important;
+	box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2) !important;
+}
+
+/* Dynamic Live Profit Breakdown Box */
+.wru-profit-preview {
+	margin-top: 14px;
+	padding-top: 12px;
+	border-top: 1px dashed #cbd5e1;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+	gap: 8px;
+}
+
+.wru-calc-item {
+	display: flex;
+	flex-direction: column;
+	background: #ffffff;
+	padding: 8px 12px;
+	border-radius: 6px;
+	border: 1px solid #e2e8f0;
+}
+
+.wru-calc-label {
+	font-size: 0.75rem;
+	color: #64748b;
+	font-weight: 500;
+	margin-bottom: 2px;
+}
+
+.wru-calc-val {
+	font-size: 0.95rem;
+	font-weight: 700;
+	color: #334155;
+}
+
+.wru-calc-item.wru-profit-highlight {
+	background: #ecfdf5;
+	border-color: #86efac;
+}
+
+.wru-calc-item.wru-profit-highlight .wru-calc-label {
+	color: #047857;
+	font-weight: 600;
+}
+
+.wru-profit-amount {
+	color: #15803d !important;
+	font-size: 1.15rem !important;
+	font-weight: 800 !important;
+}
+
+.wru-price-warning {
+	margin-top: 8px;
+	color: #b91c1c;
+	font-size: 0.85rem;
+	font-weight: 600;
+	background: #fef2f2;
+	padding: 6px 10px;
+	border-radius: 6px;
+	border: 1px solid #fca5a5;
+}
+
+
+/* ==========================================================================
+   4. Single Product "Buy Now" Button & Layout
+   ========================================================================== */
+
+/* Single Product Add-to-Cart form flex layout */
+.woocommerce div.product form.cart {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+}
+
+.woocommerce div.product form.cart .single_add_to_cart_button {
+	flex: 1 1 auto;
+	min-height: 46px;
+	border-radius: 8px;
+	font-weight: 600;
+}
+
+.wru-buy-now-btn {
+	flex: 1 1 auto;
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 8px !important;
+	min-height: 46px !important;
+	padding: 10px 20px !important;
+	background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+	color: #ffffff !important;
+	font-size: 1rem !important;
+	font-weight: 700 !important;
+	border: none !important;
+	border-radius: 8px !important;
+	cursor: pointer !important;
+	transition: all 0.2s ease !important;
+	box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25) !important;
+}
+
+.wru-buy-now-btn:hover {
+	background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
+	transform: translateY(-1px);
+	box-shadow: 0 6px 16px rgba(2, 132, 199, 0.35) !important;
+}
+
+
+/* ==========================================================================
+   5. Reseller Quick Tools (Download Image & Copy Description)
+   ========================================================================== */
+
+.wru-quick-tools-wrapper {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 15px 0 20px 0;
+}
+
+.wru-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 14px;
+	font-size: 0.85rem;
+	font-weight: 600;
+	border-radius: 6px;
+	border: 1px solid #cbd5e1;
+	background: #ffffff;
+	color: #334155;
+	text-decoration: none !important;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.wru-btn:hover {
+	background: #f1f5f9;
+	color: #0f172a;
+	border-color: #94a3b8;
+}
+
+.wru-btn-copy:hover {
+	border-color: #0284c7;
+	color: #0284c7;
+}
+
+.wru-btn-download:hover {
+	border-color: #16a34a;
+	color: #16a34a;
+}
+
+/* Toast feedback */
+.wru-toast {
+	position: fixed;
+	bottom: 30px;
+	right: 30px;
+	background: #0f172a;
+	color: #ffffff;
+	padding: 12px 20px;
+	border-radius: 8px;
+	font-size: 0.9rem;
+	font-weight: 600;
+	box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+	z-index: 999999;
+	opacity: 0;
+	transform: translateY(20px);
+	transition: all 0.3s ease;
+	pointer-events: none;
+}
+
+.wru-toast.wru-toast-visible {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+
+/* ==========================================================================
+   6. Shop Page Quick Buy Modal
+   ========================================================================== */
+
+.wru-modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	z-index: 99999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.wru-modal-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: rgba(15, 23, 42, 0.65);
+	backdrop-filter: blur(4px);
+}
+
+.wru-modal-dialog {
+	position: relative;
+	background: #ffffff;
+	width: 90%;
+	max-width: 440px;
+	border-radius: 14px;
+	box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+	padding: 24px;
+	z-index: 2;
+	animation: wruFadeUp 0.25s ease-out;
+}
+
+@keyframes wruFadeUp {
+	from { opacity: 0; transform: translateY(20px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+.wru-modal-close {
+	position: absolute;
+	top: 14px;
+	right: 16px;
+	background: transparent;
+	border: none;
+	font-size: 1.6rem;
+	line-height: 1;
+	color: #94a3b8;
+	cursor: pointer;
+}
+
+.wru-modal-close:hover {
+	color: #0f172a;
+}
+
+.wru-modal-badge {
+	display: inline-block;
+	background: #e0f2fe;
+	color: #0369a1;
+	font-size: 0.75rem;
+	font-weight: 700;
+	padding: 3px 10px;
+	border-radius: 9999px;
+	margin-bottom: 6px;
+}
+
+.wru-modal-title {
+	font-size: 1.15rem;
+	margin: 0 0 14px 0;
+	color: #0f172a;
+	line-height: 1.35;
+}
+
+.wru-modal-meta {
+	display: flex;
+	justify-content: space-between;
+	background: #f8fafc;
+	padding: 8px 14px;
+	border-radius: 8px;
+	margin-bottom: 16px;
+	font-size: 0.85rem;
+	color: #475569;
+}
+
+.wru-form-group {
+	margin-bottom: 14px;
+}
+
+.wru-form-group .wru-label {
+	display: block;
+	font-size: 0.88rem;
+	font-weight: 600;
+	color: #334155;
+	margin-bottom: 6px;
+}
+
+.wru-qty-group {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.wru-qty-input {
+	width: 80px !important;
+	padding: 8px !important;
+	font-size: 1rem !important;
+	font-weight: 700 !important;
+	text-align: center !important;
+	border-radius: 6px !important;
+	border: 1.5px solid #cbd5e1 !important;
+}
+
+.wru-modal-profit-card {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background: #ecfdf5;
+	border: 1.5px solid #86efac;
+	border-radius: 8px;
+	padding: 10px 14px;
+	margin: 14px 0;
+	color: #065f46;
+	font-weight: 600;
+	font-size: 0.95rem;
+}
+
+.wru-modal-profit-card strong {
+	color: #15803d;
+	font-size: 1.25rem;
+	font-weight: 800;
+}
+
+.wru-modal-submit-btn {
+	width: 100% !important;
+	padding: 12px !important;
+	font-size: 1.05rem !important;
+	font-weight: 700 !important;
+	border-radius: 8px !important;
+	background: #0284c7 !important;
+	color: #ffffff !important;
+	border: none !important;
+	cursor: pointer !important;
+	display: flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	gap: 8px !important;
+}
+
+.wru-modal-submit-btn:hover {
+	background: #0369a1 !important;
+}
+
+
+/* ==========================================================================
+   7. Customer Order Details Profit Summary
+   ========================================================================== */
+
+.wru-order-profit-box {
+	background: #f8fafc;
+	border: 1.5px solid #cbd5e1;
+	border-radius: 12px;
+	padding: 20px;
+	margin: 24px 0;
+}
+
+.wru-order-profit-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 14px;
+}
+
+.wru-order-profit-header h3 {
+	margin: 0;
+	font-size: 1.2rem;
+	color: #0f172a;
+}
+
+.wru-order-profit-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 12px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px;
+}
+
+.wru-order-profit-item {
+	display: flex;
+	flex-direction: column;
+}
+
+.wru-order-profit-item .wru-label {
+	font-size: 0.8rem;
+	color: #64748b;
+}
+
+.wru-order-profit-item .wru-val {
+	font-size: 1rem;
+	font-weight: 700;
+	color: #1e293b;
+}
+
+.wru-order-profit-item.wru-profit-highlight {
+	background: #ecfdf5;
+	padding: 6px 10px;
+	border-radius: 6px;
+}
+
+.wru-profit-number {
+	color: #16a34a !important;
+	font-size: 1.2rem !important;
+}
+
+.wru-order-note {
+	margin: 12px 0 0 0;
+	font-size: 0.85rem;
+	color: #64748b;
+}
+
+
+/* ==========================================================================
+   8. Upgraded Reseller Account Dashboard (Requirement 6a)
+   ========================================================================== */
+
+.wru-dashboard-wrap {
+	margin: 10px 0 30px 0;
+}
+
+.wru-dashboard-header {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+	color: #ffffff;
+	border-radius: 12px;
+	padding: 24px;
+	margin-bottom: 24px;
+	gap: 16px;
+}
+
+.wru-user-welcome h2 {
+	color: #ffffff !important;
+	margin: 0 0 6px 0;
+	font-size: 1.5rem;
+}
+
+.wru-user-welcome p {
+	margin: 0;
+	color: #94a3b8;
+	font-size: 0.95rem;
+}
+
+.wru-status-pill {
+	background: rgba(34, 197, 94, 0.2);
+	color: #4ade80;
+	border: 1px solid rgba(74, 222, 128, 0.4);
+	padding: 6px 14px;
+	border-radius: 9999px;
+	font-size: 0.85rem;
+	font-weight: 700;
+}
+
+/* 4 High-Impact KPI Cards */
+.wru-stats-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 16px;
+	margin-bottom: 28px;
+}
+
+.wru-stat-card {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 20px;
+	box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+	transition: all 0.2s ease;
+}
+
+.wru-stat-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.wru-stat-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 50px;
+	height: 50px;
+	border-radius: 12px;
+	flex-shrink: 0;
+}
+
+.wru-stat-total .wru-stat-icon {
+	background: #ecfdf5;
+	color: #10b981;
+}
+
+.wru-stat-pending .wru-stat-icon {
+	background: #fffbeb;
+	color: #f59e0b;
+}
+
+.wru-stat-completed .wru-stat-icon {
+	background: #e0f2fe;
+	color: #0284c7;
+}
+
+.wru-stat-orders .wru-stat-icon {
+	background: #f3e8ff;
+	color: #9333ea;
+}
+
+.wru-stat-info {
+	display: flex;
+	flex-direction: column;
+}
+
+.wru-stat-title {
+	font-size: 0.82rem;
+	color: #64748b;
+	font-weight: 600;
+	margin-bottom: 2px;
+}
+
+.wru-stat-number {
+	font-size: 1.35rem;
+	color: #0f172a;
+	font-weight: 800;
+}
+
+/* Payout Settings Card */
+.wru-payout-box {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	padding: 22px;
+	margin-bottom: 28px;
+	box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.wru-payout-box h3 {
+	margin: 0 0 6px 0;
+	font-size: 1.25rem;
+	color: #0f172a;
+}
+
+.wru-payout-desc {
+	color: #64748b;
+	font-size: 0.9rem;
+	margin-bottom: 18px;
+}
+
+.wru-payout-form .wru-form-row {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 16px;
+	margin-bottom: 14px;
+}
+
+.wru-payout-form label {
+	display: block;
+	font-size: 0.85rem;
+	font-weight: 600;
+	color: #334155;
+	margin-bottom: 6px;
+}
+
+.wru-select,
+.wru-input-text,
+.wru-textarea {
+	width: 100% !important;
+	padding: 10px 14px !important;
+	border: 1.5px solid #cbd5e1 !important;
+	border-radius: 8px !important;
+	font-size: 0.95rem !important;
+	background: #ffffff !important;
+	box-sizing: border-box !important;
+}
+
+.wru-field-full {
+	margin-bottom: 16px;
+}
+
+.wru-save-payout-btn {
+	background: #0f172a !important;
+	color: #ffffff !important;
+	padding: 10px 20px !important;
+	border-radius: 8px !important;
+	font-weight: 600 !important;
+	border: none !important;
+	cursor: pointer !important;
+	transition: background 0.2s ease !important;
+}
+
+.wru-save-payout-btn:hover {
+	background: #1e293b !important;
+}
+
+/* Orders Table */
+.wru-orders-section h3 {
+	margin: 0 0 14px 0;
+	font-size: 1.25rem;
+	color: #0f172a;
+}
+
+.wru-table-responsive {
+	overflow-x: auto;
+	background: #ffffff;
+	border-radius: 12px;
+	border: 1px solid #e2e8f0;
+	box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+}
+
+.wru-orders-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+
+.wru-orders-table th,
+.wru-orders-table td {
+	padding: 12px 14px;
+	text-align: left;
+	border-bottom: 1px solid #f1f5f9;
+}
+
+.wru-orders-table th {
+	background: #f8fafc;
+	font-weight: 700;
+	color: #475569;
+	font-size: 0.82rem;
+	text-transform: uppercase;
+}
+
+.wru-profit-td {
+	color: #16a34a !important;
+	font-size: 1rem !important;
+}
+
+.wru-status-badge {
+	display: inline-block;
+	padding: 3px 8px;
+	border-radius: 6px;
+	font-size: 0.78rem;
+	font-weight: 700;
+}
+
+.wru-status-completed {
+	background: #dcfce7;
+	color: #15803d;
+}
+
+.wru-status-processing,
+.wru-status-on-hold {
+	background: #fef3c7;
+	color: #b45309;
+}
+
+.wru-status-cancelled,
+.wru-status-failed {
+	background: #fee2e2;
+	color: #b91c1c;
+}
+
+.wru-view-order-btn {
+	padding: 5px 12px !important;
+	font-size: 0.8rem !important;
+	border-radius: 6px !important;
+}
+
+.wru-empty-state {
+	background: #f8fafc;
+	border: 1px dashed #cbd5e1;
+	border-radius: 10px;
+	padding: 24px;
+	text-align: center;
+	color: #64748b;
+}

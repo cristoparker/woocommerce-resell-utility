@@ -1,0 +1,19 @@
+# Archives & Built ZIP files
+*.zip
+woocommerce-resell-utility.zip
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs & Temp Files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
