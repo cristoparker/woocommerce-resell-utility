@@ -92,6 +92,9 @@ class WRU_Admin_Settings {
 		$dashboard   = isset( $_POST[ WRU_Settings::OPTION_ENABLE_DASHBOARD ] ) ? 'yes' : 'no';
 		$market_lbl  = isset( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ) : '';
 		$resell_lbl  = isset( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ) : '';
+		$inv_store   = isset( $_POST['wru_invoice_store_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_invoice_store_name'] ) ) : '';
+		$inv_phone   = isset( $_POST['wru_invoice_store_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_invoice_store_phone'] ) ) : '';
+		$inv_note    = isset( $_POST['wru_invoice_footer_note'] ) ? sanitize_textarea_field( wp_unslash( $_POST['wru_invoice_footer_note'] ) ) : '';
 
 		update_option( WRU_Settings::OPTION_PACKAGING_FEE, max( 0, $fee ) );
 		update_option( WRU_Settings::OPTION_PACKAGING_TYPE, $fee_type );
@@ -100,6 +103,9 @@ class WRU_Admin_Settings {
 		update_option( WRU_Settings::OPTION_ENABLE_SHOP_BUY_NOW, $shop_buy );
 		update_option( WRU_Settings::OPTION_ENABLE_TOOLS, $tools );
 		update_option( WRU_Settings::OPTION_ENABLE_DASHBOARD, $dashboard );
+		update_option( 'wru_invoice_store_name', $inv_store );
+		update_option( 'wru_invoice_store_phone', $inv_phone );
+		update_option( 'wru_invoice_footer_note', $inv_note );
 
 		if ( ! empty( $market_lbl ) ) {
 			update_option( WRU_Settings::OPTION_MARKET_LABEL, $market_lbl );
@@ -125,12 +131,15 @@ class WRU_Admin_Settings {
 		$market_lbl  = WRU_Settings::get_market_label();
 		$resell_lbl  = WRU_Settings::get_reseller_label();
 		$currency    = get_woocommerce_currency_symbol();
+		$inv_store   = get_option( 'wru_invoice_store_name', get_bloginfo( 'name' ) );
+		$inv_phone   = get_option( 'wru_invoice_store_phone', '' );
+		$inv_note    = get_option( 'wru_invoice_footer_note', __( 'ডেলিভারির সময় পার্সেল চেক করে টাকা পরিশোধ করুন।', 'woocommerce-resell-utility' ) );
 		?>
 		<div class="wrap wru-settings-wrap">
 			<div class="wru-settings-header">
-				<h1>🚀 <?php esc_html_e( 'WooCommerce Resell Utility সেটিংস', 'woocommerce-resell-utility' ); ?></h1>
+				<h1><?php esc_html_e( 'WooCommerce Resell Utility সেটিংস', 'woocommerce-resell-utility' ); ?></h1>
 				<p class="wru-settings-subtitle">
-					<?php esc_html_e( 'ড্রপশিপিং রিসেলার প্ল্যাটফর্ম কনফিগারেশন: প্যাকেজিং খরচ, বিক্রয়মূল্য ইনপুট ও বাটন কন্ট্রোল।', 'woocommerce-resell-utility' ); ?>
+					<?php esc_html_e( 'ড্রপশিপিং রিসেলার প্ল্যাটফর্ম কনফিগারেশন: প্যাকেজিং খরচ, ইনভয়েস ও বাটন কন্ট্রোল।', 'woocommerce-resell-utility' ); ?>
 				</p>
 			</div>
 
@@ -141,7 +150,7 @@ class WRU_Admin_Settings {
 
 				<!-- Packaging & Profit Section -->
 				<div class="wru-settings-card">
-					<h2>📦 <?php esc_html_e( 'প্যাকেজিং খরচ ও প্রফিট হিসাব', 'woocommerce-resell-utility' ); ?></h2>
+					<h2><?php esc_html_e( 'প্যাকেজিং খরচ ও প্রফিট হিসাব', 'woocommerce-resell-utility' ); ?></h2>
 					<p class="description">
 						<?php esc_html_e( 'রিসেলারের লেখা বিক্রয়মূল্য থেকে পণ্যের পাইকারি দাম এবং এই প্যাকেজিং খরচ বাদ দিয়ে নিট প্রফিট হিসাব করা হবে।', 'woocommerce-resell-utility' ); ?>
 					</p>
@@ -193,9 +202,44 @@ class WRU_Admin_Settings {
 					</table>
 				</div>
 
+				<!-- Invoice & Packing Slip Section -->
+				<div class="wru-settings-card">
+					<h2><?php esc_html_e( 'ইনভয়েস ও কুরিয়ার প্যাকিং স্লিপ সেটিংস', 'woocommerce-resell-utility' ); ?></h2>
+					<p class="description">
+						<?php esc_html_e( 'অর্ডার প্যাকিং স্লিপে আপনার শপের নাম, ফোন ও কুরিয়ার ডেলিভারি নির্দেশিকা সেট করুন।', 'woocommerce-resell-utility' ); ?>
+					</p>
+
+					<table class="form-table">
+						<tr>
+							<th scope="row">
+								<label for="wru_invoice_store_name"><?php esc_html_e( 'শপ / ব্র্যান্ড নাম', 'woocommerce-resell-utility' ); ?></label>
+							</th>
+							<td>
+								<input type="text" name="wru_invoice_store_name" id="wru_invoice_store_name" value="<?php echo esc_attr( $inv_store ); ?>" class="regular-text" />
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">
+								<label for="wru_invoice_store_phone"><?php esc_html_e( 'হটলাইন / মোবাইল নম্বর', 'woocommerce-resell-utility' ); ?></label>
+							</th>
+							<td>
+								<input type="text" name="wru_invoice_store_phone" id="wru_invoice_store_phone" value="<?php echo esc_attr( $inv_phone ); ?>" class="regular-text" placeholder="যেমন: 017XXXXXXXX" />
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">
+								<label for="wru_invoice_footer_note"><?php esc_html_e( 'ইনভয়েস ফুটার নোট (কুরিয়ারের জন্য)', 'woocommerce-resell-utility' ); ?></label>
+							</th>
+							<td>
+								<textarea name="wru_invoice_footer_note" id="wru_invoice_footer_note" rows="2" class="large-text"><?php echo esc_textarea( $inv_note ); ?></textarea>
+							</td>
+						</tr>
+					</table>
+				</div>
+
 				<!-- Buy Now & Frontend Buttons -->
 				<div class="wru-settings-card">
-					<h2>⚡ <?php esc_html_e( 'Buy Now ও ফ্রন্টএন্ড বাটনসমূহ', 'woocommerce-resell-utility' ); ?></h2>
+					<h2><?php esc_html_e( 'Buy Now ও ফ্রন্টএন্ড বাটনসমূহ', 'woocommerce-resell-utility' ); ?></h2>
 
 					<table class="form-table">
 						<tr>
@@ -254,7 +298,7 @@ class WRU_Admin_Settings {
 
 				<!-- Custom Labels -->
 				<div class="wru-settings-card">
-					<h2>🏷️ <?php esc_html_e( 'মূল্য প্রদর্শন লেবেল (Price Labels)', 'woocommerce-resell-utility' ); ?></h2>
+					<h2><?php esc_html_e( 'মূল্য প্রদর্শন লেবেল (Price Labels)', 'woocommerce-resell-utility' ); ?></h2>
 
 					<table class="form-table">
 						<tr>
@@ -281,7 +325,7 @@ class WRU_Admin_Settings {
 
 				<p class="submit">
 					<button type="submit" name="wru_save_settings" value="1" class="button button-primary button-hero">
-						💾 <?php esc_html_e( 'পরিবর্তনসমূহ সংরক্ষণ করুন', 'woocommerce-resell-utility' ); ?>
+						<?php esc_html_e( 'পরিবর্তনসমূহ সংরক্ষণ করুন', 'woocommerce-resell-utility' ); ?>
 					</button>
 				</p>
 			</form>

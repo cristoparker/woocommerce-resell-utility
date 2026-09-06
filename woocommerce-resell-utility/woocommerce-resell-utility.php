@@ -88,6 +88,7 @@ final class WooCommerce_Resell_Utility {
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-order-manager.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-dashboard.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-admin-settings.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-invoice-email.php';
 	}
 
 	/**
@@ -114,6 +115,7 @@ final class WooCommerce_Resell_Utility {
 		WRU_Order_Manager::init();
 		WRU_Reseller_Dashboard::init();
 		WRU_Admin_Settings::init();
+		WRU_Invoice_Email::init();
 
 		// Register frontend scripts and styles.
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
@@ -160,6 +162,7 @@ final class WooCommerce_Resell_Utility {
 
 		wp_localize_script( 'wru-frontend-scripts', 'wru_vars', array(
 			'ajax_url'        => admin_url( 'admin-ajax.php' ),
+			'checkout_url'    => function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : '',
 			'nonce'           => wp_create_nonce( 'wru_frontend_nonce' ),
 			'currency_symbol' => get_woocommerce_currency_symbol(),
 			'packaging_fee'   => WRU_Settings::get_packaging_fee(),

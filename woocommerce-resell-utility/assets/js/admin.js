@@ -31,7 +31,7 @@
 
 			function indicateCopied() {
 				var originalText = $copyCourierBtn.html();
-				$copyCourierBtn.html('✅ ' + (wru_admin.copied_text || 'কুরিয়ার নোট কপি হয়েছে!'));
+				$copyCourierBtn.html(wru_admin.copied_text || 'কুরিয়ার নোট কপি হয়েছে!');
 				$copyCourierBtn.css('background', '#16a34a').css('border-color', '#15803d');
 
 				setTimeout(function() {

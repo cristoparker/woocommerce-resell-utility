@@ -30,7 +30,44 @@ class WRU_Price_Display {
 			add_filter( 'woocommerce_get_price_html', array( $this, 'filter_price_html' ), 100, 2 );
 			add_filter( 'woocommerce_available_variation', array( $this, 'filter_available_variation' ), 100, 3 );
 			add_filter( 'woocommerce_sale_flash', array( $this, 'filter_sale_flash' ), 100, 3 );
+			add_filter( 'woocommerce_format_sale_price', array( $this, 'filter_format_sale_price' ), 999, 3 );
+			// WooCommerce Store API (Cart & Checkout Blocks) filter: equalize regular_price and price to prevent "Save ..." badge.
+			add_filter( 'woocommerce_store_api_cart_line_item_data', array( $this, 'filter_store_api_cart_line_item_data' ), 999, 2 );
 		}
+	}
+
+	/**
+	 * In Cart & Checkout, suppress dual regular/sale price format (preventing "Save ৳..." and "Previous price")
+	 * and output purely the active reseller sale price.
+	 *
+	 * @param string $price         Formatted price HTML.
+	 * @param string $regular_price Regular price.
+	 * @param string $sale_price    Sale price.
+	 * @return string
+	 */
+	public function filter_format_sale_price( $price, $regular_price, $sale_price ) {
+		if ( is_cart() || is_checkout() || wp_doing_ajax() || did_action( 'woocommerce_before_cart' ) || did_action( 'woocommerce_before_checkout_form' ) ) {
+			return wc_price( $sale_price );
+		}
+		return $price;
+	}
+
+	/**
+	 * Equalize Store API regular_price and price in Cart & Checkout blocks.
+	 * This completely stops WooCommerce Blocks from rendering "Save ৳..." badges and "Previous price" strikethroughs.
+	 *
+	 * @param array $item_data Cart line item data from Store API.
+	 * @param array $cart_item WooCommerce Cart item array.
+	 * @return array
+	 */
+	public function filter_store_api_cart_line_item_data( $item_data, $cart_item ) {
+		if ( isset( $item_data['prices'] ) && is_array( $item_data['prices'] ) ) {
+			if ( isset( $item_data['prices']['price'] ) ) {
+				$item_data['prices']['regular_price'] = $item_data['prices']['price'];
+				$item_data['prices']['sale_price']    = $item_data['prices']['price'];
+			}
+		}
+		return $item_data;
 	}
 
 	/**

@@ -33,7 +33,7 @@ In a modern dropshipping & reselling workflow (especially in Bangladesh and Sout
 * **Dropshipping Courier Order Data:** Captures and stores customer collection amount, wholesale cost, packaging fee, and reseller profit in HPOS & classic order meta.
 * **Admin Courier Meta Box & 1-Click Note Copy:** Admin order screen features high-impact summary cards and a one-click copy button formatted for instant booking on Steadfast, Pathao, RedX, Paperfly, etc.
 * **Upgraded My Account Reseller Hub:** 4 KPI stat cards (Total Profit, Pending, Paid, Total Orders), order history table with profit breakdowns, and bKash/Nagad/Bank payout method settings.
-* **Reseller Quick Tools:** One-click "📷 ছবি ডাউনলোড" (Download Product Image) and "📋 ডেসক্রিপশন কপি" (Copy Title & Description).
+* **Reseller Quick Tools:** One-click "ছবি ডাউনলোড" (Download Product Image) and "ডেসক্রিপশন কপি" (Copy Title & Description).
 * **HPOS & Cart/Checkout Blocks Ready:** 100% compatible with High-Performance Order Storage and latest WooCommerce features.
 
 == Installation ==
@@ -51,7 +51,7 @@ On the single product page right above the Add to Cart button, in the box labele
 Formula: `Reseller Net Profit = (Reseller Selling Price - Wholesale Price) * Quantity - Packaging Fee`.
 
 = Where can the store manager see courier COD collection? =
-Inside each WooCommerce Order edit screen, in the "📦 ড্রপশিপিং ও কুরিয়ার কালেকশন তথ্য" meta box. It also includes a 1-click copy button for quick booking on Steadfast, Pathao, RedX, etc.
+Inside each WooCommerce Order edit screen, in the "ড্রপশিপিং ও কুরিয়ার কালেকশন তথ্য" meta box. It also includes a 1-click copy button for quick booking on Steadfast, Pathao, RedX, etc.
 
 = Can resellers see their total profit and add bKash/Nagad info? =
 Yes! Logged-in resellers can visit **My Account → রিসেলার ড্যাশবোর্ড** to see their earnings, order history, and save their payout method.

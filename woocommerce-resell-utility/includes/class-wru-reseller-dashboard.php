@@ -58,12 +58,12 @@ class WRU_Reseller_Dashboard {
 			// Place reseller dashboard right after dashboard or orders.
 			$new_items[ $key ] = $title;
 			if ( 'orders' === $key ) {
-				$new_items[ self::ENDPOINT ] = __( '💼 রিসেলার ড্যাশবোর্ড', 'woocommerce-resell-utility' );
+				$new_items[ self::ENDPOINT ] = __( 'রিসেলার ড্যাশবোর্ড', 'woocommerce-resell-utility' );
 			}
 		}
 
 		if ( ! isset( $new_items[ self::ENDPOINT ] ) ) {
-			$new_items[ self::ENDPOINT ] = __( '💼 রিসেলার ড্যাশবোর্ড', 'woocommerce-resell-utility' );
+			$new_items[ self::ENDPOINT ] = __( 'রিসেলার ড্যাশবোর্ড', 'woocommerce-resell-utility' );
 		}
 
 		return $new_items;
@@ -198,7 +198,7 @@ class WRU_Reseller_Dashboard {
 
 			<!-- Payout Settings Box -->
 			<div class="wru-payout-box">
-				<h3>💳 <?php esc_html_e( 'পেআউট ও পেমেন্ট রিসিভ মেথড', 'woocommerce-resell-utility' ); ?></h3>
+				<h3><?php esc_html_e( 'পেআউট ও পেমেন্ট রিসিভ মেথড', 'woocommerce-resell-utility' ); ?></h3>
 				<p class="wru-payout-desc">
 					<?php esc_html_e( 'আপনার বিক্রির প্রফিটের টাকা যে একাউন্টে নিতে চান (বিকাশ, নগদ, বা ব্যাংক), তা নিচে লিখে রাখুন।', 'woocommerce-resell-utility' ); ?>
 				</p>
@@ -225,14 +225,14 @@ class WRU_Reseller_Dashboard {
 						<textarea name="wru_payout_notes" id="wru_payout_notes" rows="2" class="wru-textarea" placeholder="<?php esc_attr_e( 'প্রয়োজনীয় বিবরণ...', 'woocommerce-resell-utility' ); ?>"><?php echo esc_textarea( $payout_notes ); ?></textarea>
 					</div>
 					<button type="submit" name="wru_save_payout" value="1" class="button wru-save-payout-btn">
-						💾 <?php esc_html_e( 'পেআউট তথ্য সংরক্ষণ করুন', 'woocommerce-resell-utility' ); ?>
+						<?php esc_html_e( 'পেআউট তথ্য সংরক্ষণ করুন', 'woocommerce-resell-utility' ); ?>
 					</button>
 				</form>
 			</div>
 
 			<!-- Reseller Orders Table -->
 			<div class="wru-orders-section">
-				<h3>📋 <?php esc_html_e( 'রিসেলিং অর্ডার হিস্ট্রি ও প্রফিট তালিকা', 'woocommerce-resell-utility' ); ?></h3>
+				<h3><?php esc_html_e( 'রিসেলিং অর্ডার হিস্ট্রি ও প্রফিট তালিকা', 'woocommerce-resell-utility' ); ?></h3>
 				<?php if ( empty( $resell_orders ) ) : ?>
 					<div class="wru-empty-state">
 						<p><?php esc_html_e( 'আপনার কোনো রিসেলিং অর্ডার এখনও পাওয়া যায়নি। প্রোডাক্ট পেজ থেকে আপনার বিক্রয়মূল্য লিখে এখনই অর্ডার করুন!', 'woocommerce-resell-utility' ); ?></p>

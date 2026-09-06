@@ -27,13 +27,14 @@ class WRU_Buy_Now {
 		if ( WRU_Settings::is_buy_now_enabled() ) {
 			// Single product page: output Buy Now button inside add to cart form.
 			add_action( 'woocommerce_after_add_to_cart_button', array( $this, 'render_single_buy_now_button' ), 5 );
+
+			// Ensure add-to-cart parameter is populated in $_POST/$_REQUEST when wru_buy_now is submitted.
+			add_action( 'wp_loaded', array( $this, 'maybe_populate_add_to_cart_post' ), 5 );
 		}
 
 		if ( WRU_Settings::is_shop_buy_now_enabled() ) {
-			// Shop loop: wrap add to cart and buy now in a container.
-			add_action( 'woocommerce_after_shop_loop_item', array( $this, 'loop_actions_wrapper_open' ), 9 );
-			add_action( 'woocommerce_after_shop_loop_item', array( $this, 'render_loop_buy_now_button' ), 11 );
-			add_action( 'woocommerce_after_shop_loop_item', array( $this, 'loop_actions_wrapper_close' ), 12 );
+			// Shop loop: wrap Add to Cart and Buy Now buttons together cleanly in the same action container.
+			add_filter( 'woocommerce_loop_add_to_cart_link', array( $this, 'filter_loop_add_to_cart_link' ), 20, 3 );
 
 			// Quick Buy Now modal in shop footer.
 			add_action( 'wp_footer', array( $this, 'render_quick_buy_modal' ) );
@@ -51,33 +52,54 @@ class WRU_Buy_Now {
 	 * Render Buy Now button on Single Product page.
 	 */
 	public function render_single_buy_now_button() {
+		global $product;
+		$product_id = is_a( $product, 'WC_Product' ) ? $product->get_id() : 0;
 		?>
 		<button type="submit" 
 			name="wru_buy_now" 
 			value="1" 
 			class="button alt wru-buy-now-btn" 
-			id="wru-single-buy-now">
+			id="wru-single-buy-now"
+			data-product-id="<?php echo esc_attr( $product_id ); ?>">
 			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
 			<span><?php esc_html_e( 'এখনই অর্ডার করুন (Buy Now)', 'woocommerce-resell-utility' ); ?></span>
 		</button>
+		<input type="hidden" name="wru_buy_now_product_id" value="<?php echo esc_attr( $product_id ); ?>" />
 		<?php
 	}
 
 	/**
-	 * Open wrapper for loop action buttons.
+	 * Ensure add-to-cart parameter is populated when wru_buy_now is submitted.
 	 */
-	public function loop_actions_wrapper_open() {
-		echo '<div class="wru-loop-actions">';
+	public function maybe_populate_add_to_cart_post() {
+		if ( ! empty( $_POST['wru_buy_now'] ) || ! empty( $_REQUEST['wru_buy_now'] ) ) {
+			if ( empty( $_REQUEST['add-to-cart'] ) ) {
+				$prod_id = 0;
+				if ( ! empty( $_POST['wru_buy_now_product_id'] ) ) {
+					$prod_id = absint( $_POST['wru_buy_now_product_id'] );
+				} elseif ( ! empty( $_POST['product_id'] ) ) {
+					$prod_id = absint( $_POST['product_id'] );
+				}
+
+				if ( $prod_id ) {
+					$_REQUEST['add-to-cart'] = $prod_id;
+					$_POST['add-to-cart']    = $prod_id;
+				}
+			}
+		}
 	}
 
 	/**
-	 * Render Buy Now button in Shop Loop.
+	 * Append Buy Now button inside the same action container as loop Add to Cart.
+	 *
+	 * @param string      $html    Existing add to cart button HTML.
+	 * @param \WC_Product $product Product object.
+	 * @param array       $args    Arguments.
+	 * @return string
 	 */
-	public function render_loop_buy_now_button() {
-		global $product;
-
-		if ( ! is_a( $product, 'WC_Product' ) ) {
-			return;
+	public function filter_loop_add_to_cart_link( $html, $product, $args = array() ) {
+		if ( ! WRU_Settings::is_shop_buy_now_enabled() || ! is_a( $product, 'WC_Product' ) ) {
+			return $html;
 		}
 
 		$product_id      = $product->get_id();
@@ -87,38 +109,26 @@ class WRU_Buy_Now {
 		$is_simple       = $product->is_type( 'simple' );
 
 		if ( $is_simple ) {
-			// Trigger modal with data attributes.
-			?>
-			<button type="button" 
-				class="button alt wru-loop-buy-now-btn wru-trigger-quick-buy" 
-				data-product-id="<?php echo esc_attr( $product_id ); ?>"
-				data-product-title="<?php echo esc_attr( $product->get_name() ); ?>"
-				data-product-price="<?php echo esc_attr( $wholesale_price ); ?>"
-				data-packaging-fee="<?php echo esc_attr( $packaging_fee ); ?>"
-				data-product-url="<?php echo esc_url( $product_url ); ?>"
-				title="<?php esc_attr_e( 'এখনই কিনুন', 'woocommerce-resell-utility' ); ?>">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-				<span><?php esc_html_e( 'Buy Now', 'woocommerce-resell-utility' ); ?></span>
-			</button>
-			<?php
+			$buy_now_btn = sprintf(
+				'<button type="button" class="button alt wru-loop-buy-now-btn wru-trigger-quick-buy" data-product-id="%1$d" data-product-title="%2$s" data-product-price="%3$s" data-packaging-fee="%4$s" data-product-url="%5$s" title="%6$s"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>%7$s</span></button>',
+				esc_attr( $product_id ),
+				esc_attr( $product->get_name() ),
+				esc_attr( $wholesale_price ),
+				esc_attr( $packaging_fee ),
+				esc_url( $product_url ),
+				esc_attr__( 'এখনই কিনুন', 'woocommerce-resell-utility' ),
+				esc_html__( 'Buy Now', 'woocommerce-resell-utility' )
+			);
 		} else {
-			// Variable or grouped product: redirect to product page.
-			?>
-			<a href="<?php echo esc_url( $product_url ); ?>" 
-				class="button alt wru-loop-buy-now-btn"
-				title="<?php esc_attr_e( 'পণ্যটি দেখুন', 'woocommerce-resell-utility' ); ?>">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-				<span><?php esc_html_e( 'Buy Now', 'woocommerce-resell-utility' ); ?></span>
-			</a>
-			<?php
+			$buy_now_btn = sprintf(
+				'<a href="%1$s" class="button alt wru-loop-buy-now-btn" title="%2$s"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>%3$s</span></a>',
+				esc_url( $product_url ),
+				esc_attr__( 'পণ্যটি দেখুন', 'woocommerce-resell-utility' ),
+				esc_html__( 'Buy Now', 'woocommerce-resell-utility' )
+			);
 		}
-	}
 
-	/**
-	 * Close wrapper for loop action buttons.
-	 */
-	public function loop_actions_wrapper_close() {
-		echo '</div>';
+		return '<div class="wru-loop-actions">' . $html . $buy_now_btn . '</div>';
 	}
 
 	/**
@@ -169,7 +179,7 @@ class WRU_Buy_Now {
 					</div>
 
 					<div class="wru-price-warning" id="wru-modal-warning" style="display: none;">
-						⚠️ <?php esc_html_e( 'বিক্রয়মূল্য অবশ্যই পাইকারি মূল্যের চেয়ে বেশি হতে হবে।', 'woocommerce-resell-utility' ); ?>
+						<?php esc_html_e( 'সতর্কতা: বিক্রয়মূল্য অবশ্যই পাইকারি মূল্যের চেয়ে বেশি হতে হবে।', 'woocommerce-resell-utility' ); ?>
 					</div>
 				</div>
 
@@ -191,7 +201,7 @@ class WRU_Buy_Now {
 	 * @return string
 	 */
 	public function handle_buy_now_redirect( $url, $adding_to_cart = null ) {
-		if ( ! empty( $_REQUEST['wru_buy_now'] ) ) {
+		if ( ! empty( $_REQUEST['wru_buy_now'] ) || ! empty( $_POST['wru_buy_now'] ) ) {
 			return wc_get_checkout_url();
 		}
 		return $url;

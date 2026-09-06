@@ -240,5 +240,171 @@
 			});
 		}
 
+		/* ==========================================================================
+		   4. Checkout Page Reseller Selling Price Live Editor
+		   ========================================================================== */
+
+		var checkoutUpdateTimer;
+
+		// Live profit calculation on typing in checkout review table
+		$(document).on('input keyup change', '.wru-checkout-price-input', function() {
+			var $input     = $(this);
+			var sellPrice  = parseFloat($input.val()) || 0;
+			var wholesale  = parseFloat($input.data('wholesale')) || 0;
+			var qty        = parseInt($input.data('qty'), 10) || 1;
+			var packFee    = parseFloat($input.data('packaging-fee')) || 0;
+			var packType   = $input.data('packaging-type') || 'order';
+			var currSym    = wru_vars.currency_symbol || '৳';
+
+			var totalPack  = (packType === 'item') ? (packFee * qty) : packFee;
+			var profit     = Math.max(0, (sellPrice - wholesale) * qty - totalPack);
+
+			$input.closest('.wru-checkout-edit-box').find('.wru-checkout-profit-val').text(currSym + profit.toFixed(2));
+		});
+
+		// Debounced AJAX update when reseller changes value
+		$(document).on('change blur', '.wru-checkout-price-input', function() {
+			var $input   = $(this);
+			var cartKey  = $input.data('cart-key');
+			var newPrice = parseFloat($input.val()) || 0;
+
+			clearTimeout(checkoutUpdateTimer);
+			checkoutUpdateTimer = setTimeout(function() {
+				$.ajax({
+					url: wru_vars.ajax_url,
+					type: 'POST',
+					dataType: 'json',
+					data: {
+						action: 'wru_update_checkout_reseller_price',
+						nonce: wru_vars.nonce,
+						cart_key: cartKey,
+						new_price: newPrice
+					}
+				});
+			}, 250);
+		});
+
+
+		/* ==========================================================================
+		   5. Single Product Page "Buy Now" Button Fix
+		   ========================================================================== */
+
+		var isBuyNowProcessing = false;
+
+		$(document).on('click', '#wru-single-buy-now', function(e) {
+			var $btn  = $(this);
+			var $form = $btn.closest('form.cart');
+
+			if (!$form.length) {
+				return true;
+			}
+
+			// 1. Reseller price validation if reseller box exists
+			var $resellerInput = $('#wru_reseller_price');
+			if ($resellerInput.length) {
+				var enteredPrice = parseFloat($resellerInput.val());
+				var currentBasePrice = parseFloat($resellerBox.data('base-price')) || 0;
+				var isMinEnforced = parseInt(wru_vars.is_min_enforced, 10) === 1;
+
+				// Variable product check
+				if ($form.hasClass('variations_form')) {
+					var varId = parseInt($form.find('input[name="variation_id"]').val(), 10);
+					if (!varId || varId <= 0) {
+						e.preventDefault();
+						alert('দয়া করে পণ্যের অপশন (যেমন সাইজ বা কালার) নির্বাচন করুন।');
+						$form.find('.variations select').first().focus();
+						return false;
+					}
+				}
+
+				if (isNaN(enteredPrice) || enteredPrice <= 0) {
+					e.preventDefault();
+					alert('দয়া করে আপনার বিক্রয়মূল্য লিখুন (কাস্টমার থেকে যা কালেকশন করবেন)।');
+					$resellerInput.focus();
+					$('html, body').animate({
+						scrollTop: $resellerInput.offset().top - 120
+					}, 300);
+					return false;
+				}
+
+				if (isMinEnforced && enteredPrice < currentBasePrice) {
+					e.preventDefault();
+					alert('বিক্রয়মূল্য অবশ্যই পাইকারি মূল্যের চেয়ে বেশি হতে হবে।');
+					$resellerInput.focus();
+					return false;
+				}
+			}
+
+			// 2. Variable product variation validation if reseller box was absent
+			if ($form.hasClass('variations_form')) {
+				var variationId = parseInt($form.find('input[name="variation_id"]').val(), 10);
+				if (!variationId || variationId <= 0) {
+					e.preventDefault();
+					alert('দয়া করে পণ্যের অপশন নির্বাচন করুন।');
+					return false;
+				}
+			}
+
+			// 3. Ensure 'add-to-cart' product ID is submitted with the form
+			var prodId = $btn.data('product-id') || $btn.siblings('input[name="wru_buy_now_product_id"]').val();
+			if (!prodId) {
+				var $addToCartBtn = $form.find('button[name="add-to-cart"]');
+				if ($addToCartBtn.length && $addToCartBtn.val()) {
+					prodId = $addToCartBtn.val();
+				} else {
+					var $prodIdHidden = $form.find('input[name="product_id"]');
+					if ($prodIdHidden.length && $prodIdHidden.val()) {
+						prodId = $prodIdHidden.val();
+					}
+				}
+			}
+
+			if (prodId) {
+				$form.find('input.wru-injected-add-to-cart').remove();
+				if ($form.find('input[name="add-to-cart"]').length === 0) {
+					$form.append('<input type="hidden" class="wru-injected-add-to-cart" name="add-to-cart" value="' + prodId + '">');
+				}
+			}
+
+			// 4. Ensure 'wru_buy_now' is submitted with the form
+			$form.find('input.wru-injected-buy-now').remove();
+			$form.append('<input type="hidden" class="wru-injected-buy-now" name="wru_buy_now" value="1">');
+
+			isBuyNowProcessing = true;
+		});
+
+		// Theme AJAX add-to-cart fallback: if theme uses AJAX to add product, redirect to checkout on complete
+		$(document.body).on('added_to_cart', function() {
+			if (isBuyNowProcessing) {
+				var checkoutUrl = (wru_vars && wru_vars.checkout_url) ? wru_vars.checkout_url : '/checkout/';
+				window.location.href = checkoutUrl;
+			}
+		});
+
+
+		/* ==========================================================================
+		   6. Suppress Theme / WooCommerce Blocks "Save" & "Previous price" Elements
+		   ========================================================================== */
+
+		function cleanCartCheckoutBadges() {
+			if ($('body').hasClass('woocommerce-cart') || $('body').hasClass('woocommerce-checkout')) {
+				$('.wc-block-components-sale-badge, .wc-block-components-product-price__regular, .wc-block-components-product-sale-badge').remove();
+				$('.woocommerce-cart del, .woocommerce-checkout del, .wc-block-cart del, .wc-block-checkout del').remove();
+
+				// Clean text containing 'Previous price:' or 'Save '
+				$('.wc-block-components-product-price, .product-price, .product-subtotal, td.product-price, td.product-subtotal').find('*').each(function() {
+					var $el = $(this);
+					var text = $el.text().trim();
+					if (text.indexOf('Previous price:') !== -1 || text.indexOf('Discounted price:') !== -1 || text.indexOf('Save ') === 0) {
+						$el.hide();
+					}
+				});
+			}
+		}
+
+		cleanCartCheckoutBadges();
+		$(document).ajaxComplete(cleanCartCheckoutBadges);
+
 	});
 })(jQuery);
+
