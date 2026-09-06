@@ -129,7 +129,7 @@ class WRU_Reseller_Manager {
 
 		add_submenu_page(
 			'woocommerce',
-			__( 'রিসেলার তালিকা ও ক্যাশআউট ব্যবস্থাপনা', 'woocommerce-resell-utility' ),
+			__( 'রিসেলার তালিকা ও ব্যালেন্স', 'woocommerce-resell-utility' ),
 			$menu_title,
 			'manage_woocommerce',
 			'wru-resellers',
@@ -194,7 +194,11 @@ class WRU_Reseller_Manager {
 				if ( $order_packaging <= 0 ) {
 					$order_packaging = WRU_Settings::get_packaging_fee();
 				}
-				$order_loss         = $order_packaging + $cancellation_fee_rate;
+				$order_shipping = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
+				if ( $order_shipping <= 0 ) {
+					$order_shipping = (float) $order->get_meta( '_wru_shipping_charge' );
+				}
+				$order_loss         = $order_packaging + $cancellation_fee_rate + $order_shipping;
 				$cancelled_penalty += $order_loss;
 			}
 		}
@@ -436,6 +440,23 @@ class WRU_Reseller_Manager {
 		update_user_meta( $user_id, '_wru_payout_method', $method );
 		update_user_meta( $user_id, '_wru_payout_number', $number );
 
+		// Notify store admin via email
+		$admin_email = get_option( 'admin_email' );
+		if ( $admin_email ) {
+			$subject = sprintf( __( '[নতুন ক্যাশআউট রিকোয়েস্ট] %s - %s', 'woocommerce-resell-utility' ), $user->display_name, strip_tags( wc_price( $amount ) ) );
+			$body    = sprintf(
+				__( "নতুন ক্যাশআউট রিকোয়েস্ট জমা পড়েছে:\n\nরিসেলার: %s (%s)\nঅ্যামাউন্ট: %s\nপেমেন্ট মাধ্যম: %s\nনম্বর: %s\nনোট: %s\n\nএডমিন প্যানেলে রিভিউ ও পেমেন্ট পাঠান:\n%s", 'woocommerce-resell-utility' ),
+				$user->display_name,
+				$user->user_email,
+				strip_tags( wc_price( $amount ) ),
+				strtoupper( $method ),
+				$number,
+				$notes ? $notes : 'N/A',
+				admin_url( 'admin.php?page=wru-resellers&tab=cashouts' )
+			);
+			wp_mail( $admin_email, $subject, $body );
+		}
+
 		wc_add_notice( sprintf(
 			__( 'আপনার %s টাকার ক্যাশআউট রিকোয়েস্ট সফলভাবে জমা হয়েছে। এটি বর্তমানে "পেন্ডিং" অবস্থায় আছে। এডমিন পেমেন্ট পাঠানোর পর আপনার ব্যালেন্স হতে সমন্বয় হবে।', 'woocommerce-resell-utility' ),
 			wc_price( $amount )
@@ -475,6 +496,28 @@ class WRU_Reseller_Manager {
 		update_post_meta( $cashout_id, '_wru_paid_date', current_time( 'mysql' ) );
 		update_post_meta( $cashout_id, '_wru_approved_by', get_current_user_id() );
 
+		// Notify reseller via email
+		$reseller_id   = get_post_meta( $cashout_id, '_wru_reseller_id', true );
+		$reseller_user = get_userdata( $reseller_id );
+		$amount        = get_post_meta( $cashout_id, '_wru_amount', true );
+		$method        = get_post_meta( $cashout_id, '_wru_payout_method', true );
+		$number        = get_post_meta( $cashout_id, '_wru_payout_number', true );
+
+		if ( $reseller_user && ! empty( $reseller_user->user_email ) ) {
+			$subject = sprintf( __( 'আপনার ক্যাশআউট পেমেন্ট সম্পন্ন হয়েছে - %s', 'woocommerce-resell-utility' ), strip_tags( wc_price( $amount ) ) );
+			$body    = sprintf(
+				__( "অভিনন্দন %s,\n\nআপনার %s টাকার ক্যাশআউট সফলভাবে পরিশোধ করা হয়েছে।\n\nপেমেন্ট মাধ্যম: %s\nমোবাইল/একাউন্ট: %s\nট্রানজেকশন আইডি (TrxID): %s\nএডমিন নোট: %s\n\nআপনার রিসেলার ড্যাশবোর্ড চেক করতে লগইন করুন:\n%s", 'woocommerce-resell-utility' ),
+				$reseller_user->display_name,
+				strip_tags( wc_price( $amount ) ),
+				strtoupper( $method ),
+				$number,
+				$trx_id ? $trx_id : 'N/A',
+				$admin_note ? $admin_note : 'N/A',
+				wc_get_account_endpoint_url( WRU_Reseller_Dashboard::ENDPOINT )
+			);
+			wp_mail( $reseller_user->user_email, $subject, $body );
+		}
+
 		wp_safe_redirect( add_query_arg( array(
 			'page'    => 'wru-resellers',
 			'tab'     => 'cashouts',
@@ -505,6 +548,23 @@ class WRU_Reseller_Manager {
 		wp_trash_post( $cashout_id );
 		update_post_meta( $cashout_id, '_wru_rejection_reason', $reason );
 		update_post_meta( $cashout_id, '_wru_rejected_by', get_current_user_id() );
+
+		// Notify reseller of rejection with reason
+		$reseller_id   = get_post_meta( $cashout_id, '_wru_reseller_id', true );
+		$reseller_user = get_userdata( $reseller_id );
+		$amount        = get_post_meta( $cashout_id, '_wru_amount', true );
+
+		if ( $reseller_user && ! empty( $reseller_user->user_email ) ) {
+			$subject = sprintf( __( 'আপনার ক্যাশআউট রিকোয়েস্ট সংক্রান্ত আপডেট - %s', 'woocommerce-resell-utility' ), strip_tags( wc_price( $amount ) ) );
+			$body    = sprintf(
+				__( "প্রিয় %s,\n\nআপনার %s টাকার ক্যাশআউট রিকোয়েস্টটি এডমিন দ্বারা বাতিল করা হয়েছে এবং অর্থ আপনার ব্যালেন্সে ফিরিয়ে দেওয়া হয়েছে।\n\nবাতিলের কারণ: %s\n\nবিস্তারিত জানতে লগইন করুন:\n%s", 'woocommerce-resell-utility' ),
+				$reseller_user->display_name,
+				strip_tags( wc_price( $amount ) ),
+				$reason ? $reason : 'N/A',
+				wc_get_account_endpoint_url( WRU_Reseller_Dashboard::ENDPOINT )
+			);
+			wp_mail( $reseller_user->user_email, $subject, $body );
+		}
 
 		wp_safe_redirect( add_query_arg( array(
 			'page'    => 'wru-resellers',
@@ -675,7 +735,7 @@ class WRU_Reseller_Manager {
 		?>
 		<div class="wrap wru-admin-wrap">
 			<h1 class="wp-heading-inline">
-				<?php esc_html_e( 'রিসেলার তালিকা ও ক্যাশআউট ব্যবস্থাপনা', 'woocommerce-resell-utility' ); ?>
+				<?php esc_html_e( 'রিসেলার তালিকা ও ব্যালেন্স', 'woocommerce-resell-utility' ); ?>
 			</h1>
 			<hr class="wp-header-end">
 

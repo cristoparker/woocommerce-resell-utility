@@ -35,8 +35,8 @@ class WRU_Admin_Settings {
 	public function register_menu_page() {
 		add_submenu_page(
 			'woocommerce',
-			__( 'Resell Utility সেটিংস', 'woocommerce-resell-utility' ),
-			__( 'Resell Utility', 'woocommerce-resell-utility' ),
+			__( 'রিসেল ইউটিলিটি সেটিংস', 'woocommerce-resell-utility' ),
+			__( 'রিসেল ইউটিলিটি', 'woocommerce-resell-utility' ),
 			'manage_woocommerce',
 			'wru-settings',
 			array( $this, 'render_settings_page' )
@@ -206,14 +206,14 @@ class WRU_Admin_Settings {
 
 						<tr>
 							<th scope="row">
-								<label for="wru_cancellation_fee"><?php esc_html_e( 'অর্ডার বাতিল / রিটার্ন কর্তন ফি', 'woocommerce-resell-utility' ); ?></label>
+								<label for="wru_cancellation_fee"><?php esc_html_e( 'অর্ডার বাতিল / রিফান্ড জরিমানা ফি', 'woocommerce-resell-utility' ); ?></label>
 							</th>
 							<td>
 								<div class="wru-currency-input-inline">
 									<span><?php echo esc_html( $currency ); ?></span>
 									<input type="number" step="any" min="0" name="<?php echo esc_attr( WRU_Settings::OPTION_CANCELLATION_FEE ); ?>" id="wru_cancellation_fee" value="<?php echo esc_attr( $cancel_fee ); ?>" class="regular-text" />
 								</div>
-								<p class="description"><?php esc_html_e( 'কোনো অর্ডার বাতিল বা রিটার্ন হলে রিসেলারের একাউন্ট হতে প্যাকেজিং খরচের সাথে অতিরিক্ত এই ডেলিভারি চার্জ মাইনাস হবে (ডিফল্ট: ১০ ৳)।', 'woocommerce-resell-utility' ); ?></p>
+								<p class="description"><?php esc_html_e( 'কোনো অর্ডার বাতিল বা রিফান্ড হলে রিসেলারের একাউন্ট হতে অর্ডারের ডেলিভারি ফি + প্যাকেজিং খরচের সাথে অতিরিক্ত এই জরিমানা ফি কর্তন হবে (যেমন: ১০ ৳)।', 'woocommerce-resell-utility' ); ?></p>
 							</td>
 						</tr>
 					</table>

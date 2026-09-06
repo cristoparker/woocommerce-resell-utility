@@ -57,6 +57,12 @@ class WRU_Order_Manager {
 
 		// Frontend order received and view order profit summary.
 		add_action( 'woocommerce_order_details_after_order_table', array( $this, 'render_frontend_order_summary' ), 15 );
+
+		// Add custom columns in WooCommerce Orders list table (HPOS & classic).
+		add_filter( 'manage_edit-shop_order_columns', array( $this, 'add_order_list_columns' ) );
+		add_filter( 'manage_woocommerce_page_wc-orders_columns', array( $this, 'add_order_list_columns' ) );
+		add_action( 'manage_shop_order_posts_custom_column', array( $this, 'render_order_list_column_content' ), 10, 2 );
+		add_action( 'manage_woocommerce_page_wc-orders_custom_column', array( $this, 'render_order_list_column_content' ), 10, 2 );
 	}
 
 	/**
@@ -636,6 +642,24 @@ class WRU_Order_Manager {
 				</div>
 			</div>
 
+			<?php
+			$order_status = $order->get_status();
+			if ( in_array( $order_status, array( 'cancelled', 'failed', 'refunded' ), true ) ) :
+				$shipping_fee = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
+				if ( $shipping_fee <= 0 ) {
+					$shipping_fee = (float) $order->get_meta( '_wru_shipping_charge' );
+				}
+				$cancellation_fee_rate = WRU_Settings::get_cancellation_fee();
+				$order_loss = $packaging + $cancellation_fee_rate + $shipping_fee;
+			?>
+				<div class="wru-order-cancel-alert" style="margin-top: 15px; padding: 12px 16px; background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; color: #991b1b;">
+					<strong><?php printf( esc_html__( 'অর্ডার স্ট্যাটাস (%s) - রিসেলার ব্যালেন্স হতে মোট কর্তন: %s', 'woocommerce-resell-utility' ), esc_html( wc_get_order_status_name( $order_status ) ), '-' . wc_price( $order_loss ) ); ?></strong>
+					<div style="font-size: 12px; margin-top: 4px; color: #7f1d1d;">
+						<?php printf( esc_html__( 'বিস্তারিত কর্তন: ডেলিভারি ফি (%s) + জরিমানা ফি (%s) + প্যাকেজিং ফি (%s)', 'woocommerce-resell-utility' ), wc_price( $shipping_fee ), wc_price( $cancellation_fee_rate ), wc_price( $packaging ) ); ?>
+					</div>
+				</div>
+			<?php endif; ?>
+
 			<div class="wru-admin-courier-action">
 				<div class="wru-courier-note-box">
 					<label><strong><?php esc_html_e( 'কুরিয়ার বুকিং নোট (Steadfast / Pathao / RedX / Paperfly ইত্যাদির জন্য):', 'woocommerce-resell-utility' ); ?></strong></label>
@@ -664,10 +688,12 @@ class WRU_Order_Manager {
 			return;
 		}
 
-		$collection = (float) $order->get_meta( '_wru_total_collection_amount' );
-		$wholesale  = (float) $order->get_meta( '_wru_total_wholesale_amount' );
-		$packaging  = (float) $order->get_meta( '_wru_total_packaging_fee' );
-		$profit     = (float) $order->get_meta( '_wru_total_reseller_profit' );
+		$collection   = (float) $order->get_meta( '_wru_total_collection_amount' );
+		$wholesale    = (float) $order->get_meta( '_wru_total_wholesale_amount' );
+		$packaging    = (float) $order->get_meta( '_wru_total_packaging_fee' );
+		$profit       = (float) $order->get_meta( '_wru_total_reseller_profit' );
+		$order_status = $order->get_status();
+		$is_cancelled = in_array( $order_status, array( 'cancelled', 'failed', 'refunded' ), true );
 		?>
 		<div class="wru-order-profit-box">
 			<div class="wru-order-profit-header">
@@ -688,14 +714,34 @@ class WRU_Order_Manager {
 					<span class="wru-label"><?php esc_html_e( 'প্যাকেজিং খরচ:', 'woocommerce-resell-utility' ); ?></span>
 					<span class="wru-val">-<?php echo wc_price( $packaging ); ?></span>
 				</div>
-				<div class="wru-order-profit-item wru-profit-highlight">
-					<span class="wru-label"><?php esc_html_e( 'আপনার নিট লাভ (Profit):', 'woocommerce-resell-utility' ); ?></span>
-					<strong class="wru-val wru-profit-number"><?php echo wc_price( $profit ); ?></strong>
-				</div>
+				<?php if ( $is_cancelled ) : 
+					$shipping_fee = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
+					if ( $shipping_fee <= 0 ) {
+						$shipping_fee = (float) $order->get_meta( '_wru_shipping_charge' );
+					}
+					$cancellation_fee_rate = WRU_Settings::get_cancellation_fee();
+					$order_loss = $packaging + $cancellation_fee_rate + $shipping_fee;
+				?>
+					<div class="wru-order-profit-item wru-profit-highlight" style="background:#fef2f2; border-color:#fca5a5;">
+						<span class="wru-label" style="color:#991b1b;"><?php esc_html_e( 'অর্ডার কর্তন (Loss):', 'woocommerce-resell-utility' ); ?></span>
+						<strong class="wru-val" style="color:#dc2626;">-<?php echo wc_price( $order_loss ); ?></strong>
+					</div>
+				<?php else : ?>
+					<div class="wru-order-profit-item wru-profit-highlight">
+						<span class="wru-label"><?php esc_html_e( 'আপনার নিট লাভ (Profit):', 'woocommerce-resell-utility' ); ?></span>
+						<strong class="wru-val wru-profit-number"><?php echo wc_price( $profit ); ?></strong>
+					</div>
+				<?php endif; ?>
 			</div>
-			<p class="wru-order-note">
-				<em><?php esc_html_e( 'নোট: কাস্টমারকে পার্সেলটি ডেলিভারি করে কুরিয়ার হতে টাকা সংগ্রহের পর আপনার নিট লাভ আপনার একাউন্টে জমা হবে।', 'woocommerce-resell-utility' ); ?></em>
-			</p>
+			<?php if ( $is_cancelled ) : ?>
+				<p class="wru-order-note" style="color:#dc2626;">
+					<em><?php esc_html_e( 'নোট: পার্সেলটি বাতিল/রিটার্ন হওয়ায় ডেলিভারি ফি, প্যাকেজিং খরচ ও জরিমানা ফি আপনার ব্যালেন্স হতে সমন্বয় করা হয়েছে।', 'woocommerce-resell-utility' ); ?></em>
+				</p>
+			<?php else : ?>
+				<p class="wru-order-note">
+					<em><?php esc_html_e( 'নোট: কাস্টমারকে পার্সেলটি ডেলিভারি করে কুরিয়ার হতে টাকা সংগ্রহের পর আপনার নিট লাভ আপনার একাউন্টে জমা হবে।', 'woocommerce-resell-utility' ); ?></em>
+				</p>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -723,5 +769,62 @@ class WRU_Order_Manager {
 		}
 
 		$order->save();
+	}
+
+	/**
+	 * Add custom columns to WooCommerce Orders list.
+	 *
+	 * @param array $columns Existing columns.
+	 * @return array
+	 */
+	public function add_order_list_columns( $columns ) {
+		$new_columns = array();
+		foreach ( $columns as $key => $label ) {
+			$new_columns[ $key ] = $label;
+			if ( 'order_status' === $key || 'order_number' === $key ) {
+				$new_columns['wru_reseller_brand'] = __( 'রিসেলার শপ', 'woocommerce-resell-utility' );
+				$new_columns['wru_cod_amount']     = __( 'COD কালেকশন', 'woocommerce-resell-utility' );
+			}
+		}
+		if ( ! isset( $new_columns['wru_reseller_brand'] ) ) {
+			$new_columns['wru_reseller_brand'] = __( 'রিসেলার শপ', 'woocommerce-resell-utility' );
+			$new_columns['wru_cod_amount']     = __( 'COD কালেকশন', 'woocommerce-resell-utility' );
+		}
+		return $new_columns;
+	}
+
+	/**
+	 * Render custom column content in WooCommerce Orders list.
+	 *
+	 * @param string        $column           Column key.
+	 * @param int|\WC_Order $post_or_order_id Post ID or Order object.
+	 */
+	public function render_order_list_column_content( $column, $post_or_order_id ) {
+		$order = is_a( $post_or_order_id, 'WC_Order' ) ? $post_or_order_id : wc_get_order( $post_or_order_id );
+		if ( ! $order ) {
+			return;
+		}
+
+		if ( 'wru_reseller_brand' === $column ) {
+			$company = $order->get_meta( '_wru_reseller_company_name' ) ?: $order->get_billing_company();
+			if ( empty( $company ) ) {
+				$uid = $order->get_customer_id();
+				if ( $uid ) {
+					$company = get_user_meta( $uid, '_wru_reseller_company_name', true );
+				}
+			}
+			if ( ! empty( $company ) ) {
+				echo '<strong style="color: #111827; font-size: 13px;">' . esc_html( $company ) . '</strong>';
+			} else {
+				echo '<span style="color: #9ca3af;">—</span>';
+			}
+		} elseif ( 'wru_cod_amount' === $column ) {
+			$cod = (float) $order->get_meta( '_wru_total_collection_amount' );
+			if ( $cod > 0 ) {
+				echo '<strong style="color: #16a34a; font-size: 13px;">' . wc_price( $cod ) . '</strong>';
+			} else {
+				echo '<span style="color: #9ca3af;">—</span>';
+			}
+		}
 	}
 }

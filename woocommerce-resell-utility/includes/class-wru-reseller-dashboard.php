@@ -474,6 +474,7 @@ class WRU_Reseller_Dashboard {
 									<th><?php esc_html_e( 'কুরিয়ার কালেকশন', 'woocommerce-resell-utility' ); ?></th>
 									<th><?php esc_html_e( 'পাইকারি খরচ', 'woocommerce-resell-utility' ); ?></th>
 									<th><?php esc_html_e( 'প্যাকেজিং ফি', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'শিপিং ফি', 'woocommerce-resell-utility' ); ?></th>
 									<th><?php esc_html_e( 'আপনার নিট লাভ', 'woocommerce-resell-utility' ); ?></th>
 									<th><?php esc_html_e( 'স্ট্যাটাস', 'woocommerce-resell-utility' ); ?></th>
 									<th><?php esc_html_e( 'অ্যাকশন', 'woocommerce-resell-utility' ); ?></th>
@@ -481,11 +482,15 @@ class WRU_Reseller_Dashboard {
 							</thead>
 							<tbody>
 								<?php foreach ( $resell_orders as $resell_order ) : 
-									$order_id   = $resell_order->get_id();
-									$collection = (float) $resell_order->get_meta( '_wru_total_collection_amount' );
-									$wholesale  = (float) $resell_order->get_meta( '_wru_total_wholesale_amount' );
-									$packaging  = (float) $resell_order->get_meta( '_wru_total_packaging_fee' );
-									$profit     = (float) $resell_order->get_meta( '_wru_total_reseller_profit' );
+									$order_id     = $resell_order->get_id();
+									$collection   = (float) $resell_order->get_meta( '_wru_total_collection_amount' );
+									$wholesale    = (float) $resell_order->get_meta( '_wru_total_wholesale_amount' );
+									$packaging    = (float) $resell_order->get_meta( '_wru_total_packaging_fee' );
+									$shipping_fee = (float) $resell_order->get_shipping_total() + (float) $resell_order->get_shipping_tax();
+									if ( $shipping_fee <= 0 ) {
+										$shipping_fee = (float) $resell_order->get_meta( '_wru_shipping_charge' );
+									}
+									$profit       = (float) $resell_order->get_meta( '_wru_total_reseller_profit' );
 								?>
 									<tr>
 										<td><strong>#<?php echo esc_html( $order_id ); ?></strong></td>
@@ -493,6 +498,7 @@ class WRU_Reseller_Dashboard {
 										<td><?php echo wc_price( $collection ); ?></td>
 										<td><?php echo wc_price( $wholesale ); ?></td>
 										<td><?php echo wc_price( $packaging ); ?></td>
+										<td><?php echo wc_price( $shipping_fee ); ?></td>
 										<td class="wru-profit-td">
 											<?php
 											$order_status = $resell_order->get_status();
@@ -501,7 +507,7 @@ class WRU_Reseller_Dashboard {
 											} elseif ( in_array( $order_status, array( 'processing', 'on-hold', 'pending' ), true ) ) {
 												echo '<strong style="color: #d97706;">' . wc_price( $profit ) . '</strong><br><small style="color:#64748b; font-size:11px;">(' . esc_html__( 'পেন্ডিং', 'woocommerce-resell-utility' ) . ')</small>';
 											} elseif ( in_array( $order_status, array( 'cancelled', 'failed', 'refunded' ), true ) ) {
-												$order_loss = $packaging + $cancellation_fee_rate;
+												$order_loss = $packaging + $cancellation_fee_rate + $shipping_fee;
 												echo '<strong style="color: #dc2626;">-' . wc_price( $order_loss ) . '</strong><br><small style="color:#dc2626; font-size:11px;">(' . esc_html__( 'কর্তন', 'woocommerce-resell-utility' ) . ')</small>';
 											} else {
 												echo wc_price( $profit );

@@ -35,6 +35,12 @@ class WRU_Invoice_Email {
 
 		// Add "Print Invoice" button inside order details on frontend.
 		add_action( 'woocommerce_order_details_after_order_table', array( $this, 'render_frontend_print_button' ), 25 );
+
+		// Register Bulk Actions in WooCommerce Orders list (HPOS & classic CPT).
+		add_filter( 'bulk_actions-edit-shop_order', array( $this, 'register_bulk_actions' ) );
+		add_filter( 'bulk_actions-woocommerce_page_wc-orders', array( $this, 'register_bulk_actions' ) );
+		add_filter( 'handle_bulk_actions-edit-shop_order', array( $this, 'handle_bulk_actions' ), 10, 3 );
+		add_filter( 'handle_bulk_actions-woocommerce_page_wc-orders', array( $this, 'handle_bulk_actions' ), 10, 3 );
 	}
 
 	/**
@@ -172,10 +178,62 @@ class WRU_Invoice_Email {
 	}
 
 	/**
-	 * Handle print invoice request and render clean, print-ready HTML page.
+	 * Register bulk action for packaging labels in Orders list.
+	 *
+	 * @param array $actions Bulk actions list.
+	 * @return array
+	 */
+	public function register_bulk_actions( $actions ) {
+		$actions['wru_bulk_print_labels'] = __( 'প্যাকেজিং লেবেল প্রিন্ট করুন (বাল্ক)', 'woocommerce-resell-utility' );
+		return $actions;
+	}
+
+	/**
+	 * Handle bulk print action and redirect to bulk label print view.
+	 *
+	 * @param string $redirect_to Redirect URL.
+	 * @param string $action      Action name.
+	 * @param array  $order_ids   Selected order IDs.
+	 * @return string
+	 */
+	public function handle_bulk_actions( $redirect_to, $action, $order_ids ) {
+		if ( 'wru_bulk_print_labels' !== $action ) {
+			return $redirect_to;
+		}
+
+		if ( empty( $order_ids ) ) {
+			return $redirect_to;
+		}
+
+		$clean_ids = array_filter( array_map( 'absint', (array) $order_ids ) );
+		if ( empty( $clean_ids ) ) {
+			return $redirect_to;
+		}
+
+		$ids_string = implode( ',', $clean_ids );
+		$nonce      = wp_create_nonce( 'wru_bulk_print_labels' );
+
+		return add_query_arg( array(
+			'wru_action' => 'print_bulk_labels',
+			'order_ids'  => $ids_string,
+			'nonce'      => $nonce,
+		), home_url( '/' ) );
+	}
+
+	/**
+	 * Handle print invoice or bulk packaging labels request.
 	 */
 	public function handle_invoice_print_request() {
-		if ( ! isset( $_GET['wru_action'] ) || 'print_invoice' !== $_GET['wru_action'] ) {
+		if ( ! isset( $_GET['wru_action'] ) ) {
+			return;
+		}
+
+		if ( 'print_bulk_labels' === $_GET['wru_action'] ) {
+			$this->handle_bulk_print_request();
+			return;
+		}
+
+		if ( 'print_invoice' !== $_GET['wru_action'] ) {
 			return;
 		}
 
@@ -199,10 +257,380 @@ class WRU_Invoice_Email {
 			wp_die( esc_html__( 'আপনার এই ইনভয়েস দেখার অনুমতি নেই।', 'woocommerce-resell-utility' ) );
 		}
 
-		// Resolve Reseller Sender Details (Reseller Name / Company Name, NOT Khushir Baksho)
-		$is_resell_order  = 'yes' === $order->get_meta( '_wru_is_resell_order' );
-		$sender_company   = $order->get_meta( '_wru_reseller_company_name' );
-		$sender_phone     = $order->get_meta( '_wru_reseller_phone' );
+		$inv_note = get_option( 'wru_invoice_footer_note', __( 'ডেলিভারির সময় পার্সেল চেক করে টাকা পরিশোধ করুন।', 'woocommerce-resell-utility' ) );
+		?>
+		<!DOCTYPE html>
+		<html lang="bn">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title><?php printf( esc_html__( 'প্যাকেজিং লেবেল #%s', 'woocommerce-resell-utility' ), esc_html( $order_id ) ); ?></title>
+			<?php echo self::get_minimal_slip_css(); ?>
+		</head>
+		<body>
+
+			<!-- Top Print Action Bar (Hidden during print) -->
+			<div class="print-bar">
+				<div class="print-bar-info">
+					<strong><?php printf( esc_html__( 'প্যাকেজিং স্লিপ প্রিন্টার - পার্সেল #%s', 'woocommerce-resell-utility' ), esc_html( $order_id ) ); ?></strong>
+				</div>
+				<div class="print-actions">
+					<button type="button" class="print-btn" onclick="window.print();">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+						<?php esc_html_e( 'প্রিন্ট করুন', 'woocommerce-resell-utility' ); ?>
+					</button>
+				</div>
+			</div>
+
+			<?php self::render_slip_markup( $order, $inv_note ); ?>
+
+		</body>
+		</html>
+		<?php
+		exit;
+	}
+
+	/**
+	 * Handle bulk packaging labels print request.
+	 */
+	public function handle_bulk_print_request() {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'আপনার এই প্যাকেজিং লেবেল দেখার অনুমতি নেই।', 'woocommerce-resell-utility' ) );
+		}
+
+		$nonce = isset( $_GET['nonce'] ) ? sanitize_text_field( wp_unslash( $_GET['nonce'] ) ) : '';
+		if ( ! wp_verify_nonce( $nonce, 'wru_bulk_print_labels' ) ) {
+			wp_die( esc_html__( 'অননুমোদিত অনুরোধ। অনুগ্রহ করে আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ) );
+		}
+
+		$raw_ids = isset( $_GET['order_ids'] ) ? sanitize_text_field( wp_unslash( $_GET['order_ids'] ) ) : '';
+		$ids     = array_filter( array_map( 'absint', explode( ',', $raw_ids ) ) );
+
+		if ( empty( $ids ) ) {
+			wp_die( esc_html__( 'কোনো অর্ডার নির্বাচন করা হয়নি।', 'woocommerce-resell-utility' ) );
+		}
+
+		$orders = array();
+		foreach ( $ids as $id ) {
+			$order = wc_get_order( $id );
+			if ( $order ) {
+				$orders[] = $order;
+			}
+		}
+
+		if ( empty( $orders ) ) {
+			wp_die( esc_html__( 'কোনো বৈধ অর্ডার পাওয়া যায়নি।', 'woocommerce-resell-utility' ) );
+		}
+
+		$inv_note = get_option( 'wru_invoice_footer_note', __( 'ডেলিভারির সময় পার্সেল চেক করে টাকা পরিশোধ করুন।', 'woocommerce-resell-utility' ) );
+		$count    = count( $orders );
+		?>
+		<!DOCTYPE html>
+		<html lang="bn">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title><?php printf( esc_html__( 'বাল্ক প্যাকেজিং লেবেল (%d টি পার্সেল)', 'woocommerce-resell-utility' ), $count ); ?></title>
+			<?php echo self::get_minimal_slip_css(); ?>
+		</head>
+		<body>
+
+			<!-- Top Print Action Bar (Hidden during print) -->
+			<div class="print-bar">
+				<div class="print-bar-info">
+					<strong><?php printf( esc_html__( 'বাল্ক প্যাকেজিং স্লিপ প্রিন্টার (%d টি পার্সেল)', 'woocommerce-resell-utility' ), $count ); ?></strong>
+					<span style="opacity: 0.7; margin-left: 8px; font-size: 12px;"><?php esc_html_e( '(প্রিন্ট করলে প্রতিটি লেবেল আলাদা আলাদা পেজে প্রিন্ট হবে)', 'woocommerce-resell-utility' ); ?></span>
+				</div>
+				<div class="print-actions">
+					<button type="button" class="print-btn" onclick="window.print();">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+						<?php printf( esc_html__( 'একসাথে সব প্রিন্ট করুন (%d টি)', 'woocommerce-resell-utility' ), $count ); ?>
+					</button>
+				</div>
+			</div>
+
+			<?php foreach ( $orders as $order ) : ?>
+				<?php self::render_slip_markup( $order, $inv_note ); ?>
+			<?php endforeach; ?>
+
+		</body>
+		</html>
+		<?php
+		exit;
+	}
+
+	/**
+	 * Get CSS style block for minimal ink-saving packaging slips.
+	 *
+	 * @return string
+	 */
+	public static function get_minimal_slip_css() {
+		return '<style>
+			* { box-sizing: border-box; }
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+				color: #111827;
+				background: #f3f4f6;
+				margin: 0;
+				padding: 24px;
+				font-size: 13px;
+				line-height: 1.5;
+			}
+			.print-bar {
+				max-width: 650px;
+				margin: 0 auto 16px auto;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				background: #ffffff;
+				border: 1px solid #d1d5db;
+				color: #111827;
+				padding: 10px 16px;
+				border-radius: 6px;
+			}
+			.print-bar-info {
+				font-size: 13px;
+				font-weight: 600;
+			}
+			.print-actions {
+				display: flex;
+				gap: 8px;
+				align-items: center;
+			}
+			.print-btn {
+				background: #111827;
+				color: #ffffff;
+				border: 1px solid #111827;
+				padding: 7px 16px;
+				border-radius: 4px;
+				font-size: 13px;
+				font-weight: 600;
+				cursor: pointer;
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+			}
+			.print-btn:hover {
+				background: #374151;
+			}
+			.packing-slip-wrapper {
+				max-width: 650px;
+				margin: 0 auto 24px auto;
+				background: #ffffff;
+				border: 1px solid #d1d5db;
+				border-radius: 6px;
+				padding: 24px 28px;
+				page-break-after: always;
+				break-after: page;
+			}
+			.packing-slip-wrapper:last-child {
+				page-break-after: avoid;
+				break-after: avoid;
+				margin-bottom: 0;
+			}
+			.slip-header {
+				display: flex;
+				justify-content: space-between;
+				align-items: flex-start;
+				border-bottom: 2px solid #111827;
+				padding-bottom: 12px;
+				margin-bottom: 16px;
+			}
+			.reseller-brand-name {
+				font-size: 20px;
+				font-weight: 800;
+				margin: 0 0 3px 0;
+				color: #111827;
+				letter-spacing: -0.01em;
+			}
+			.reseller-contact {
+				font-size: 12px;
+				color: #4b5563;
+				margin: 0;
+			}
+			.order-meta-box {
+				text-align: right;
+			}
+			.order-meta-tag {
+				font-size: 10px;
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+				color: #6b7280;
+				font-weight: 700;
+				margin-bottom: 2px;
+			}
+			.order-meta-title {
+				font-size: 16px;
+				font-weight: 800;
+				color: #111827;
+				margin: 0 0 2px 0;
+			}
+			.order-meta-date {
+				font-size: 11px;
+				color: #4b5563;
+				margin: 0;
+			}
+			.delivery-grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 14px;
+				margin-bottom: 16px;
+			}
+			.delivery-box {
+				border: 1px solid #d1d5db;
+				border-radius: 4px;
+				padding: 12px 14px;
+				background: #ffffff;
+			}
+			.delivery-box-title {
+				font-size: 10px;
+				text-transform: uppercase;
+				font-weight: 700;
+				letter-spacing: 0.06em;
+				color: #6b7280;
+				margin: 0 0 6px 0;
+				border-bottom: 1px solid #e5e7eb;
+				padding-bottom: 3px;
+			}
+			.delivery-name {
+				font-size: 14px;
+				font-weight: 700;
+				color: #111827;
+				margin: 0 0 3px 0;
+			}
+			.delivery-phone {
+				font-size: 13px;
+				font-weight: 600;
+				color: #111827;
+				margin: 0 0 4px 0;
+			}
+			.delivery-address {
+				font-size: 12px;
+				color: #374151;
+				margin: 0;
+				line-height: 1.4;
+			}
+			.cod-collection-card {
+				background: #ffffff;
+				border: 2px solid #111827;
+				border-radius: 4px;
+				padding: 10px 14px;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				margin-bottom: 16px;
+			}
+			.cod-label-title {
+				font-size: 12px;
+				font-weight: 800;
+				text-transform: uppercase;
+				letter-spacing: 0.04em;
+				margin: 0;
+				color: #111827;
+			}
+			.cod-amount-badge {
+				font-size: 20px;
+				font-weight: 900;
+				color: #000000;
+				letter-spacing: -0.01em;
+			}
+			.products-table {
+				width: 100%;
+				border-collapse: collapse;
+				margin-bottom: 16px;
+			}
+			.products-table th {
+				background: #f9fafb;
+				border-top: 1px solid #111827;
+				border-bottom: 1px solid #111827;
+				padding: 8px 10px;
+				text-align: left;
+				font-size: 11px;
+				font-weight: 700;
+				color: #374151;
+				text-transform: uppercase;
+				letter-spacing: 0.04em;
+			}
+			.products-table td {
+				padding: 8px 10px;
+				border-bottom: 1px solid #e5e7eb;
+				font-size: 12px;
+				color: #111827;
+			}
+			.products-table td.text-right, .products-table th.text-right {
+				text-align: right;
+			}
+			.product-title {
+				font-weight: 600;
+				color: #111827;
+			}
+			.slip-footer {
+				text-align: center;
+				border-top: 1px dashed #d1d5db;
+				padding-top: 10px;
+				font-size: 11px;
+				color: #6b7280;
+			}
+			.slip-footer p {
+				margin: 0;
+			}
+			@media print {
+				@page {
+					margin: 8mm;
+					size: auto;
+				}
+				body {
+					background: #ffffff !important;
+					padding: 0 !important;
+					margin: 0 !important;
+					color: #000000 !important;
+				}
+				.print-bar {
+					display: none !important;
+				}
+				.packing-slip-wrapper {
+					border: 1px solid #000000 !important;
+					border-radius: 0 !important;
+					box-shadow: none !important;
+					padding: 16px 20px !important;
+					max-width: 100% !important;
+					width: 100% !important;
+					page-break-after: always !important;
+					break-after: page !important;
+					margin: 0 !important;
+				}
+				.packing-slip-wrapper:last-child {
+					page-break-after: avoid !important;
+					break-after: avoid !important;
+				}
+				.cod-collection-card {
+					border: 2px solid #000000 !important;
+					background: #ffffff !important;
+					color: #000000 !important;
+				}
+				.cod-amount-badge {
+					color: #000000 !important;
+				}
+			}
+		</style>';
+	}
+
+	/**
+	 * Render single packaging slip wrapper markup for an order.
+	 *
+	 * @param \WC_Order $order    Order object.
+	 * @param string    $inv_note Optional instruction note.
+	 */
+	public static function render_slip_markup( $order, $inv_note = '' ) {
+		if ( ! $order ) {
+			return;
+		}
+
+		$order_id        = $order->get_id();
+		$order_user_id   = $order->get_customer_id();
+		$is_resell_order = 'yes' === $order->get_meta( '_wru_is_resell_order' );
+		$sender_company  = $order->get_meta( '_wru_reseller_company_name' );
+		$sender_phone    = $order->get_meta( '_wru_reseller_phone' );
 
 		if ( empty( $sender_company ) && $order->get_billing_company() ) {
 			$sender_company = $order->get_billing_company();
@@ -228,7 +656,6 @@ class WRU_Invoice_Email {
 			}
 		}
 
-		// Fallback for company name if still empty
 		if ( empty( $sender_company ) ) {
 			if ( $is_resell_order ) {
 				$reseller_user  = get_userdata( $order_user_id );
@@ -239,7 +666,9 @@ class WRU_Invoice_Email {
 			}
 		}
 
-		$inv_note = get_option( 'wru_invoice_footer_note', __( 'ডেলিভারির সময় পার্সেল চেক করে টাকা পরিশোধ করুন।', 'woocommerce-resell-utility' ) );
+		if ( empty( $inv_note ) ) {
+			$inv_note = get_option( 'wru_invoice_footer_note', __( 'ডেলিভারির সময় পার্সেল চেক করে টাকা পরিশোধ করুন।', 'woocommerce-resell-utility' ) );
+		}
 
 		$collection  = (float) $order->get_meta( '_wru_total_collection_amount' );
 		$shipping    = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
@@ -267,381 +696,97 @@ class WRU_Invoice_Email {
 		$customer_address = ( $order->get_shipping_address_1() ?: $order->get_billing_address_1() ) . ( ( $order->get_shipping_address_2() ?: $order->get_billing_address_2() ) ? ', ' . ( $order->get_shipping_address_2() ?: $order->get_billing_address_2() ) : '' );
 		$customer_city    = $order->get_shipping_city() ?: $order->get_billing_city();
 		$customer_postcode= $order->get_shipping_postcode() ?: $order->get_billing_postcode();
-
-		// Output standalone print-ready HTML
 		?>
-		<!DOCTYPE html>
-		<html lang="bn">
-		<head>
-			<meta charset="UTF-8">
-			<meta name="viewport" content="width=device-width, initial-scale=1.0">
-			<title><?php printf( esc_html__( 'প্যাকেজিং লেবেল ও ইনভয়েস #%s - %s', 'woocommerce-resell-utility' ), esc_html( $order_id ), esc_html( $sender_company ) ); ?></title>
-			<style>
-				* { box-sizing: border-box; }
-				body {
-					font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hind Siliguri", Arial, sans-serif;
-					color: #0f172a;
-					background: #f1f5f9;
-					margin: 0;
-					padding: 20px;
-					font-size: 14px;
-					line-height: 1.5;
-				}
-				.print-bar {
-					max-width: 720px;
-					margin: 0 auto 16px auto;
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					background: #0f172a;
-					color: #ffffff;
-					padding: 12px 20px;
-					border-radius: 8px;
-					box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-				}
-				.print-bar-info {
-					font-size: 13px;
-					font-weight: 500;
-				}
-				.print-actions {
-					display: flex;
-					gap: 10px;
-					align-items: center;
-				}
-				.print-btn {
-					background: #16a34a;
-					color: #ffffff;
-					border: none;
-					padding: 8px 18px;
-					border-radius: 6px;
-					font-size: 14px;
-					font-weight: 700;
-					cursor: pointer;
-					display: inline-flex;
-					align-items: center;
-					gap: 6px;
-					transition: background 0.2s;
-				}
-				.print-btn:hover {
-					background: #15803d;
-				}
-				
-				/* Packaging Label / Slip Container */
-				.packing-slip-wrapper {
-					max-width: 720px;
-					margin: 0 auto;
-					background: #ffffff;
-					border: 2px dashed #94a3b8;
-					border-radius: 12px;
-					padding: 30px;
-					box-shadow: 0 4px 15px rgba(0,0,0,0.06);
-					position: relative;
-				}
-				.cut-line-badge {
-					position: absolute;
-					top: -11px;
-					left: 24px;
-					background: #ffffff;
-					padding: 0 10px;
-					color: #64748b;
-					font-size: 11px;
-					font-weight: 600;
-					letter-spacing: 0.05em;
-					text-transform: uppercase;
-				}
-				.slip-header {
-					display: flex;
-					justify-content: space-between;
-					align-items: flex-start;
-					border-bottom: 2px solid #0f172a;
-					padding-bottom: 16px;
-					margin-bottom: 20px;
-				}
-				.reseller-brand-name {
-					font-size: 24px;
-					font-weight: 900;
-					margin: 0 0 4px 0;
-					color: #0f172a;
-					letter-spacing: -0.02em;
-				}
-				.reseller-contact {
-					font-size: 13px;
-					color: #475569;
-					margin: 0;
-					font-weight: 600;
-				}
-				.order-meta-box {
-					text-align: right;
-				}
-				.order-meta-title {
-					font-size: 18px;
-					font-weight: 800;
-					color: #0f172a;
-					margin: 0 0 4px 0;
-				}
-				.order-meta-date {
-					font-size: 12px;
-					color: #64748b;
-					margin: 0;
-				}
-
-				/* 2-Column Delivery Grid: Sender & Recipient */
-				.delivery-grid {
-					display: grid;
-					grid-template-columns: 1fr 1fr;
-					gap: 16px;
-					margin-bottom: 20px;
-				}
-				.delivery-box {
-					border: 1.5px solid #cbd5e1;
-					border-radius: 8px;
-					padding: 14px 16px;
-					background: #f8fafc;
-				}
-				.delivery-box-title {
-					font-size: 11px;
-					text-transform: uppercase;
-					font-weight: 800;
-					letter-spacing: 0.05em;
-					color: #64748b;
-					margin: 0 0 8px 0;
-					border-bottom: 1px solid #e2e8f0;
-					padding-bottom: 4px;
-				}
-				.delivery-name {
-					font-size: 16px;
-					font-weight: 800;
-					color: #0f172a;
-					margin: 0 0 4px 0;
-				}
-				.delivery-phone {
-					font-size: 14px;
-					font-weight: 700;
-					color: #0f172a;
-					margin: 0 0 6px 0;
-				}
-				.delivery-address {
-					font-size: 13px;
-					color: #334155;
-					margin: 0;
-					line-height: 1.4;
-				}
-
-				/* Prominent Courier Cash Collection (COD) Box */
-				.cod-collection-card {
-					background: #0f172a;
-					color: #ffffff;
-					border-radius: 8px;
-					padding: 16px 20px;
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					margin-bottom: 20px;
-				}
-				.cod-label-title {
-					font-size: 14px;
-					font-weight: 700;
-					margin: 0 0 2px 0;
-					color: #f8fafc;
-				}
-				.cod-label-sub {
-					font-size: 11px;
-					color: #94a3b8;
-					margin: 0;
-				}
-				.cod-amount-badge {
-					font-size: 26px;
-					font-weight: 900;
-					color: #4ade80;
-					letter-spacing: -0.02em;
-				}
-
-				/* Products Table (Customer-safe: NO wholesale or profit displayed) */
-				.products-table {
-					width: 100%;
-					border-collapse: collapse;
-					margin-bottom: 20px;
-				}
-				.products-table th {
-					background: #f1f5f9;
-					border-top: 1px solid #cbd5e1;
-					border-bottom: 1px solid #cbd5e1;
-					padding: 10px 12px;
-					text-align: left;
-					font-size: 12px;
-					font-weight: 800;
-					color: #475569;
-					text-transform: uppercase;
-				}
-				.products-table td {
-					padding: 10px 12px;
-					border-bottom: 1px solid #f1f5f9;
-					font-size: 13px;
-				}
-				.products-table td.text-right, .products-table th.text-right {
-					text-align: right;
-				}
-				.product-title {
-					font-weight: 700;
-					color: #0f172a;
-				}
-
-				/* Slip Footer */
-				.slip-footer {
-					text-align: center;
-					border-top: 1px dashed #cbd5e1;
-					padding-top: 14px;
-					font-size: 12px;
-					color: #64748b;
-				}
-				.slip-footer p {
-					margin: 0 0 4px 0;
-				}
-
-				/* Print Styles */
-				@media print {
-					body {
-						background: #ffffff !important;
-						padding: 0 !important;
-						margin: 0 !important;
-					}
-					.print-bar {
-						display: none !important;
-					}
-					.packing-slip-wrapper {
-						box-shadow: none !important;
-						border: 2px dashed #000000 !important;
-						border-radius: 0 !important;
-						padding: 20px !important;
-						max-width: 100% !important;
-						width: 100% !important;
-					}
-					.cut-line-badge {
-						display: none !important;
-					}
-					.cod-collection-card {
-						background: #000000 !important;
-						color: #ffffff !important;
-						-webkit-print-color-adjust: exact;
-						print-color-adjust: exact;
-					}
-					.cod-amount-badge {
-						color: #ffffff !important;
-					}
-				}
-			</style>
-		</head>
-		<body>
-
-			<!-- Top Print Action Bar (Hidden during print) -->
-			<div class="print-bar">
-				<div class="print-bar-info">
-					<strong><?php esc_html_e( 'প্যাকেজিং লেবেল প্রিন্টার', 'woocommerce-resell-utility' ); ?></strong>
-					<span style="opacity: 0.7; margin-left: 8px;"><?php esc_html_e( '(কুরিয়ার পার্সেল বক্সে লাগানোর জন্য প্রিন্ট করুন)', 'woocommerce-resell-utility' ); ?></span>
+		<div class="packing-slip-wrapper">
+			<!-- Header: Reseller Brand & Order Meta -->
+			<div class="slip-header">
+				<div>
+					<h1 class="reseller-brand-name"><?php echo esc_html( $sender_company ); ?></h1>
+					<?php if ( ! empty( $sender_phone ) ) : ?>
+						<p class="reseller-contact"><?php printf( esc_html__( 'ফোন: %s', 'woocommerce-resell-utility' ), esc_html( $sender_phone ) ); ?></p>
+					<?php endif; ?>
 				</div>
-				<div class="print-actions">
-					<button type="button" class="print-btn" onclick="window.print();">
-						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-						<?php esc_html_e( 'প্রিন্ট করুন', 'woocommerce-resell-utility' ); ?>
-					</button>
+				<div class="order-meta-box">
+					<div class="order-meta-tag"><?php esc_html_e( 'SHIPPING LABEL / PACKING SLIP', 'woocommerce-resell-utility' ); ?></div>
+					<div class="order-meta-title"><?php printf( esc_html__( 'অর্ডার #%s', 'woocommerce-resell-utility' ), esc_html( $order_id ) ); ?></div>
+					<p class="order-meta-date"><?php echo esc_html( wc_format_datetime( $order->get_date_created() ) ); ?></p>
+					<?php if ( $order->get_shipping_method() ) : ?>
+						<p class="order-meta-date"><?php echo esc_html( $order->get_shipping_method() ); ?></p>
+					<?php endif; ?>
 				</div>
 			</div>
 
-			<!-- Packaging Slip / Label Body -->
-			<div class="packing-slip-wrapper">
-				<div class="cut-line-badge"><?php esc_html_e( 'প্যাকেজিং লেবেল (পার্সেল বক্সে সংযুক্ত করুন)', 'woocommerce-resell-utility' ); ?></div>
+			<!-- 2-Column Delivery Info -->
+			<div class="delivery-grid">
+				<!-- Sender Box (Reseller Shop) -->
+				<div class="delivery-box">
+					<div class="delivery-box-title"><?php esc_html_e( 'প্রেরক (FROM):', 'woocommerce-resell-utility' ); ?></div>
+					<div class="delivery-name"><?php echo esc_html( $sender_company ); ?></div>
+					<?php if ( ! empty( $sender_phone ) ) : ?>
+						<div class="delivery-phone"><?php printf( esc_html__( 'ফোন: %s', 'woocommerce-resell-utility' ), esc_html( $sender_phone ) ); ?></div>
+					<?php endif; ?>
+				</div>
 
-				<!-- Header: Reseller Brand & Order Meta -->
-				<div class="slip-header">
-					<div>
-						<!-- Displays Reseller's Shop / Company Name -->
-						<h1 class="reseller-brand-name"><?php echo esc_html( $sender_company ); ?></h1>
-						<?php if ( ! empty( $sender_phone ) ) : ?>
-							<p class="reseller-contact"><?php printf( esc_html__( 'হটলাইন / মোবাইল: %s', 'woocommerce-resell-utility' ), esc_html( $sender_phone ) ); ?></p>
+				<!-- Recipient Box (Customer) -->
+				<div class="delivery-box" style="border-color: #111827;">
+					<div class="delivery-box-title" style="color: #111827; font-weight: 800;"><?php esc_html_e( 'প্রাপক (TO):', 'woocommerce-resell-utility' ); ?></div>
+					<div class="delivery-name"><?php echo esc_html( $customer_name ); ?></div>
+					<div class="delivery-phone">
+						<?php printf( esc_html__( 'মোবাইল: %s', 'woocommerce-resell-utility' ), esc_html( $customer_phone ) ); ?>
+					</div>
+					<p class="delivery-address">
+						<?php echo esc_html( $customer_address ); ?>
+						<?php if ( $customer_city ) : ?>
+							<br><strong><?php echo esc_html( $customer_city ); ?><?php echo $customer_postcode ? ' - ' . esc_html( $customer_postcode ) : ''; ?></strong>
 						<?php endif; ?>
-					</div>
-					<div class="order-meta-box">
-						<div class="order-meta-title"><?php printf( esc_html__( 'পার্সেল #%s', 'woocommerce-resell-utility' ), esc_html( $order_id ) ); ?></div>
-						<p class="order-meta-date"><?php echo esc_html( wc_format_datetime( $order->get_date_created() ) ); ?></p>
-						<p class="order-meta-date">
-							<strong><?php echo esc_html( $order->get_shipping_method() ?: __( 'কুরিয়ার হোম ডেলিভারি', 'woocommerce-resell-utility' ) ); ?></strong>
-						</p>
-					</div>
+					</p>
 				</div>
+			</div>
 
-				<!-- 2-Column Delivery Info -->
-				<div class="delivery-grid">
-					<!-- Sender Box (Reseller Shop) -->
-					<div class="delivery-box">
-						<div class="delivery-box-title"><?php esc_html_e( 'প্রেরক (From / Seller):', 'woocommerce-resell-utility' ); ?></div>
-						<div class="delivery-name"><?php echo esc_html( $sender_company ); ?></div>
-						<?php if ( ! empty( $sender_phone ) ) : ?>
-							<div class="delivery-phone"><?php printf( esc_html__( 'মোবাইল: %s', 'woocommerce-resell-utility' ), esc_html( $sender_phone ) ); ?></div>
-						<?php endif; ?>
-						<p class="delivery-address"><?php esc_html_e( 'অনলাইন ড্রপশিপিং ও পার্সেল সার্ভিস', 'woocommerce-resell-utility' ); ?></p>
-					</div>
-
-					<!-- Recipient Box (Customer) -->
-					<div class="delivery-box" style="border-color: #0f172a; background: #ffffff;">
-						<div class="delivery-box-title" style="color: #0f172a;"><?php esc_html_e( 'প্রাপক (Deliver To / Customer):', 'woocommerce-resell-utility' ); ?></div>
-						<div class="delivery-name"><?php echo esc_html( $customer_name ); ?></div>
-						<div class="delivery-phone" style="font-size: 15px; color: #0284c7;">
-							<?php printf( esc_html__( 'মোবাইল: %s', 'woocommerce-resell-utility' ), esc_html( $customer_phone ) ); ?>
-						</div>
-						<p class="delivery-address">
-							<?php echo esc_html( $customer_address ); ?>
-							<?php if ( $customer_city ) : ?>
-								<br><strong><?php echo esc_html( $customer_city ); ?><?php echo $customer_postcode ? ' - ' . esc_html( $customer_postcode ) : ''; ?></strong>
-							<?php endif; ?>
-						</p>
-					</div>
+			<!-- Minimal High-Contrast Cash on Delivery (COD) Box -->
+			<div class="cod-collection-card">
+				<div class="cod-label-title">
+					<?php esc_html_e( 'কুরিয়ার কালেকশন (COD Amount):', 'woocommerce-resell-utility' ); ?>
 				</div>
-
-				<!-- High-Visibility Courier Cash on Delivery (COD) Collection Banner -->
-				<div class="cod-collection-card">
-					<div>
-						<div class="cod-label-title"><?php esc_html_e( 'কুরিয়ার কালেকশন (Cash on Delivery - COD):', 'woocommerce-resell-utility' ); ?></div>
-						<div class="cod-label-sub">
-							<?php esc_html_e( 'কাস্টমার হতে এই পরিমাণ টাকা ডেলিভারির সময় বুঝে নিবেন।', 'woocommerce-resell-utility' ); ?>
-						</div>
-					</div>
-					<div class="cod-amount-badge">
-						<?php echo wc_price( $collection ); ?>
-					</div>
+				<div class="cod-amount-badge">
+					<?php echo wc_price( $collection ); ?>
 				</div>
+			</div>
 
-				<!-- Parcel Contents / Products Table (Clean, no wholesale or profit prices) -->
-				<table class="products-table">
-					<thead>
+			<!-- Parcel Contents / Products Table (Clean, minimal, no wholesale or profit) -->
+			<table class="products-table">
+				<thead>
+					<tr>
+						<th style="width: 10%;"><?php esc_html_e( '#', 'woocommerce-resell-utility' ); ?></th>
+						<th style="width: 70%;"><?php esc_html_e( 'পণ্যের বিবরণ (Item Description)', 'woocommerce-resell-utility' ); ?></th>
+						<th class="text-right" style="width: 20%;"><?php esc_html_e( 'পরিমাণ (Qty)', 'woocommerce-resell-utility' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php 
+					$item_idx = 1;
+					foreach ( $order->get_items() as $item ) : 
+					?>
 						<tr>
-							<th style="width: 75%;"><?php esc_html_e( 'পার্সেল পণ্যের বিবরণ (Package Contents)', 'woocommerce-resell-utility' ); ?></th>
-							<th class="text-right" style="width: 25%;"><?php esc_html_e( 'পরিমাণ (Qty)', 'woocommerce-resell-utility' ); ?></th>
+							<td><?php echo esc_html( $item_idx++ ); ?></td>
+							<td>
+								<span class="product-title"><?php echo esc_html( $item->get_name() ); ?></span>
+							</td>
+							<td class="text-right">
+								<strong><?php echo esc_html( $item->get_quantity() ); ?></strong>
+							</td>
 						</tr>
-					</thead>
-					<tbody>
-						<?php foreach ( $order->get_items() as $item ) : ?>
-							<tr>
-								<td>
-									<span class="product-title"><?php echo esc_html( $item->get_name() ); ?></span>
-								</td>
-								<td class="text-right">
-									<strong><?php echo esc_html( $item->get_quantity() ); ?> টি</strong>
-								</td>
-							</tr>
-						<?php endforeach; ?>
-					</tbody>
-				</table>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
 
-				<!-- Footer Note -->
+			<!-- Footer Note (Optional Instruction) -->
+			<?php if ( ! empty( $inv_note ) ) : ?>
 				<div class="slip-footer">
-					<p><strong><?php echo esc_html( $inv_note ); ?></strong></p>
-					<p style="font-size: 11px; opacity: 0.7;"><?php printf( esc_html__( 'কুরিয়ার ট্র্যাকিং ও ডেলিভারি পার্সেল স্লিপ | অর্ডার #%s', 'woocommerce-resell-utility' ), esc_html( $order_id ) ); ?></p>
+					<p><?php echo esc_html( $inv_note ); ?></p>
 				</div>
-			</div>
-
-		</body>
-		</html>
+			<?php endif; ?>
+		</div>
 		<?php
-		exit;
 	}
 }
