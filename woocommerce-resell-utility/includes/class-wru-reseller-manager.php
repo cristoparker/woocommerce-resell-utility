@@ -33,6 +33,21 @@ class WRU_Reseller_Manager {
 		if ( ! $user_id ) {
 			$user_id = get_current_user_id();
 		}
+		if ( ! $user_id && ! empty( $_POST['billing_email'] ) ) {
+			$found_user = get_user_by( 'email', sanitize_email( wp_unslash( $_POST['billing_email'] ) ) );
+			if ( $found_user ) {
+				$user_id = $found_user->ID;
+			}
+		}
+		if ( ! $user_id && function_exists( 'WC' ) && isset( WC()->checkout ) && is_object( WC()->checkout ) ) {
+			$email = WC()->checkout()->get_value( 'billing_email' );
+			if ( ! empty( $email ) ) {
+				$found_user = get_user_by( 'email', sanitize_email( $email ) );
+				if ( $found_user ) {
+					$user_id = $found_user->ID;
+				}
+			}
+		}
 		if ( ! $user_id ) {
 			return false;
 		}
@@ -40,6 +55,10 @@ class WRU_Reseller_Manager {
 			return true;
 		}
 		if ( user_can( $user_id, self::ROLE_RESELLER ) ) {
+			return true;
+		}
+		$status = get_user_meta( $user_id, '_wru_reseller_status', true );
+		if ( 'approved' === $status ) {
 			return true;
 		}
 		$user = get_userdata( $user_id );
@@ -58,6 +77,12 @@ class WRU_Reseller_Manager {
 	public static function get_reseller_checkout_error_message( $user_id = 0 ) {
 		if ( ! $user_id ) {
 			$user_id = get_current_user_id();
+		}
+		if ( ! $user_id && ! empty( $_POST['billing_email'] ) ) {
+			$found_user = get_user_by( 'email', sanitize_email( wp_unslash( $_POST['billing_email'] ) ) );
+			if ( $found_user ) {
+				$user_id = $found_user->ID;
+			}
 		}
 
 		if ( ! $user_id ) {
@@ -129,11 +154,17 @@ class WRU_Reseller_Manager {
 				self::ROLE_RESELLER,
 				__( 'রিসেলার', 'woocommerce-resell-utility' ),
 				array(
-					'read'         => true,
-					'edit_posts'   => false,
-					'delete_posts' => false,
+					'read'              => true,
+					self::ROLE_RESELLER => true,
+					'edit_posts'        => false,
+					'delete_posts'      => false,
 				)
 			);
+		} else {
+			$role = get_role( self::ROLE_RESELLER );
+			if ( $role && ! $role->has_cap( self::ROLE_RESELLER ) ) {
+				$role->add_cap( self::ROLE_RESELLER );
+			}
 		}
 	}
 
@@ -671,6 +702,7 @@ class WRU_Reseller_Manager {
 			$user = get_userdata( $user_id );
 			if ( $user ) {
 				$user->add_role( self::ROLE_RESELLER );
+				update_user_meta( $user_id, '_wru_reseller_status', 'approved' );
 				wp_safe_redirect( add_query_arg( array(
 					'page'    => 'wru-resellers',
 					'tab'     => 'resellers',
@@ -2650,7 +2682,7 @@ class WRU_Reseller_Manager {
 		}
 
 		// Only enforce on My Account registration form (do not block checkout account creation)
-		if ( ( function_exists( 'is_checkout' ) && is_checkout() ) || isset( $_POST['woocommerce_checkout_place_order'] ) ) {
+		if ( ( function_exists( 'is_checkout' ) && is_checkout() ) || isset( $_POST['woocommerce_checkout_place_order'] ) || ( isset( $_GET['wc-ajax'] ) && 'checkout' === $_GET['wc-ajax'] ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX && isset( $_POST['ship_to_different_address'] ) ) ) {
 			return $errors;
 		}
 

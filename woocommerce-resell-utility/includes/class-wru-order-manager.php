@@ -58,6 +58,13 @@ class WRU_Order_Manager {
 		add_filter( 'woocommerce_checkout_get_value', array( $this, 'filter_reseller_checkout_field_values' ), 10, 2 );
 		add_action( 'woocommerce_before_checkout_form', array( $this, 'render_checkout_banner' ), 5 );
 		add_filter( 'woocommerce_enable_order_notes_field', '__return_false', 999 );
+		add_filter( 'woocommerce_ship_to_different_address_checked', '__return_false', 999 );
+
+		// Ensure shipping methods (Inside Dhaka, Outside Dhaka, COD charges) are always evaluated & visible
+		add_filter( 'woocommerce_shipping_cost_requires_address', '__return_false', 999 );
+		add_filter( 'woocommerce_cart_ready_to_calc_shipping', '__return_true', 999 );
+		add_filter( 'woocommerce_customer_get_shipping_country', array( $this, 'filter_default_country' ), 999 );
+		add_filter( 'woocommerce_customer_get_billing_country', array( $this, 'filter_default_country' ), 999 );
 
 		// Reseller role verification during checkout confirmation & order processing.
 		add_action( 'woocommerce_checkout_process', array( $this, 'validate_checkout_reseller_role' ) );
@@ -650,11 +657,43 @@ class WRU_Order_Manager {
 			'default'     => is_user_logged_in() ? wp_get_current_user()->user_email : '',
 		);
 
-		$fields['billing']  = $billing;
-		$fields['shipping'] = array();
-		$fields['order']    = array();
+		// Hidden country and city so WooCommerce core and shipping zone matching work properly
+		$billing['billing_country'] = array(
+			'type'     => 'hidden',
+			'default'  => 'BD',
+			'required' => false,
+		);
+		$billing['billing_city'] = array(
+			'type'     => 'hidden',
+			'default'  => 'Dhaka',
+			'required' => false,
+		);
+
+		$fields['billing'] = $billing;
+
+		// Ensure shipping fields contain Bangladesh defaults so WooCommerce shipping packages evaluate properly
+		if ( isset( $fields['shipping'] ) && is_array( $fields['shipping'] ) ) {
+			if ( isset( $fields['shipping']['shipping_country'] ) ) {
+				$fields['shipping']['shipping_country']['default'] = 'BD';
+			}
+			if ( isset( $fields['shipping']['shipping_city'] ) ) {
+				$fields['shipping']['shipping_city']['default'] = 'Dhaka';
+			}
+		}
+
+		$fields['order'] = array();
 
 		return $fields;
+	}
+
+	/**
+	 * Ensure customer country defaults to Bangladesh ('BD') so shipping packages and zones evaluate accurately.
+	 *
+	 * @param string $country Current country code.
+	 * @return string
+	 */
+	public function filter_default_country( $country ) {
+		return ! empty( $country ) ? $country : 'BD';
 	}
 
 
@@ -816,13 +855,44 @@ class WRU_Order_Manager {
 	}
 
 	/**
+	 * Clear stale reseller restriction error notices from WooCommerce session if customer is now authorized.
+	 */
+	public static function clear_stale_reseller_notices() {
+		if ( ! function_exists( 'wc_get_notices' ) || ! function_exists( 'wc_set_notices' ) ) {
+			return;
+		}
+		$notices = wc_get_notices( 'error' );
+		if ( empty( $notices ) ) {
+			return;
+		}
+		$filtered = array();
+		foreach ( $notices as $notice ) {
+			$text = is_array( $notice ) ? ( isset( $notice['notice'] ) ? $notice['notice'] : '' ) : (string) $notice;
+			if ( false === strpos( $text, 'অনুমোদিত রিসেলার' ) && false === strpos( $text, 'রিসেলার একাউন্ট' ) && false === strpos( $text, 'রিসেলার রোল' ) && false === strpos( $text, 'wru_not_reseller' ) ) {
+				$filtered[] = $notice;
+			}
+		}
+		wc_set_notices( 'error', $filtered );
+	}
+
+	/**
 	 * Validate reseller role during checkout confirmation (runs when Place Order is clicked).
 	 * If the user does not have the reseller role, the checkout fails immediately with a notice.
 	 */
 	public function validate_checkout_reseller_role() {
-		if ( ! WRU_Reseller_Manager::is_reseller() ) {
-			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
+		$user_id = get_current_user_id();
+		if ( ! $user_id && ! empty( $_POST['billing_email'] ) ) {
+			$u = get_user_by( 'email', sanitize_email( wp_unslash( $_POST['billing_email'] ) ) );
+			if ( $u ) {
+				$user_id = $u->ID;
+			}
+		}
+
+		if ( ! WRU_Reseller_Manager::is_reseller( $user_id ) ) {
+			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message( $user_id );
 			wc_add_notice( $message, 'error' );
+		} else {
+			self::clear_stale_reseller_notices();
 		}
 	}
 
@@ -833,11 +903,21 @@ class WRU_Order_Manager {
 	 * @param \WP_Error $errors Validation errors object.
 	 */
 	public function validate_checkout_reseller_role_after( $data, $errors ) {
-		if ( ! WRU_Reseller_Manager::is_reseller() ) {
-			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
+		$user_id = get_current_user_id();
+		if ( ! $user_id && ! empty( $data['billing_email'] ) ) {
+			$u = get_user_by( 'email', sanitize_email( $data['billing_email'] ) );
+			if ( $u ) {
+				$user_id = $u->ID;
+			}
+		}
+
+		if ( ! WRU_Reseller_Manager::is_reseller( $user_id ) ) {
+			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message( $user_id );
 			if ( is_wp_error( $errors ) && ! wc_has_notice( $message, 'error' ) ) {
 				$errors->add( 'wru_not_reseller', $message );
 			}
+		} else {
+			self::clear_stale_reseller_notices();
 		}
 	}
 
@@ -849,8 +929,15 @@ class WRU_Order_Manager {
 	 * @throws \Exception When user lacks reseller role.
 	 */
 	public function guard_checkout_create_order( $order, $data ) {
-		if ( ! WRU_Reseller_Manager::is_reseller() ) {
-			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
+		$user_id = $order ? $order->get_customer_id() : get_current_user_id();
+		if ( ! $user_id && ! empty( $data['billing_email'] ) ) {
+			$u = get_user_by( 'email', sanitize_email( $data['billing_email'] ) );
+			if ( $u ) {
+				$user_id = $u->ID;
+			}
+		}
+		if ( ! WRU_Reseller_Manager::is_reseller( $user_id ) ) {
+			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message( $user_id );
 			throw new Exception( wp_strip_all_tags( $message ) );
 		}
 	}
@@ -859,12 +946,19 @@ class WRU_Order_Manager {
 	 * Display warning notice on checkout page if customer is not an approved reseller.
 	 */
 	public function check_cart_reseller_permission() {
+		// Do not add notice during checkout AJAX submission to prevent aborting order placement
+		if ( wp_doing_ajax() || ( defined( 'DOING_AJAX' ) && DOING_AJAX ) || isset( $_GET['wc-ajax'] ) ) {
+			return;
+		}
+
 		if ( is_checkout() && ! is_order_received_page() ) {
 			if ( ! WRU_Reseller_Manager::is_reseller() ) {
 				$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
 				if ( ! wc_has_notice( $message, 'error' ) && ! wc_has_notice( $message, 'notice' ) ) {
 					wc_add_notice( $message, 'error' );
 				}
+			} else {
+				self::clear_stale_reseller_notices();
 			}
 		}
 	}

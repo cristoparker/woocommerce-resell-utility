@@ -285,8 +285,19 @@
 				totalItems = subtotalNum;
 			}
 
-			var shippingText = $('.woocommerce-shipping-totals .amount, .shipping .amount').first().text();
-			var shippingNum  = parseFloat(shippingText.replace(/[^0-9.]/g, '')) || 0;
+			var shippingNum = 0;
+			var $checkedShipping = $('input[name^="shipping_method"]:checked, input.shipping_method:checked, .wc-block-checkout__shipping-option input:checked').first();
+			if ($checkedShipping.length) {
+				var labelText = $checkedShipping.closest('li, label, .wc-block-checkout__shipping-option').text();
+				var parsed = parseFloat(labelText.replace(/[^0-9.]/g, ''));
+				if (!isNaN(parsed) && parsed > 0) {
+					shippingNum = parsed;
+				}
+			}
+			if (shippingNum <= 0) {
+				var shippingText = $('.woocommerce-shipping-totals .amount, .shipping .amount').first().text();
+				shippingNum  = parseFloat(shippingText.replace(/[^0-9.]/g, '')) || 0;
+			}
 			var totalCol     = totalItems + shippingNum;
 
 			if (totalCol <= 0 && typeof wru_vars !== 'undefined' && wru_vars.courier_collection_amount) {
@@ -297,6 +308,13 @@
 				$('.wru-checkout-collection-amount').html('<span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">' + currSym + '</span>' + totalCol.toFixed(2) + '</bdi></span>');
 			}
 		}
+
+		// Re-calculate courier collection amount whenever shipping method (Inside Dhaka / Outside Dhaka) changes
+		$(document).on('change', 'input[name^="shipping_method"], input.shipping_method, .wc-block-checkout__shipping-option input', function() {
+			setTimeout(function() {
+				recalculateCheckoutCourierCollection();
+			}, 50);
+		});
 
 		// Debounced AJAX update when reseller changes value
 		$(document).on('change blur', '.wru-checkout-price-input', function() {
@@ -560,12 +578,16 @@
 				$emailField.removeClass('form-row-first form-row-last').addClass('form-row-wide');
 			}
 
-			// Hide all additional / unnecessary checkout fields
-			$('#billing_last_name_field, #billing_company_field, #billing_address_2_field, #billing_city_field, #billing_state_field, #billing_country_field, #billing_reseller_phone_field, .woocommerce-additional-fields, #order_comments_field, #ship-to-different-address, .woocommerce-shipping-fields, #shipping_first_name_field, #shipping_last_name_field, #shipping_phone_field, #shipping_address_1_field, #shipping_address_2_field, #shipping_city_field, #shipping_state_field, #shipping_postcode_field, #shipping_country_field').hide().css('display', 'none');
+			// Hide auxiliary fields without suppressing shipping methods or shipping tables
+			$('#billing_last_name_field, #billing_company_field, #billing_address_2_field, #billing_city_field, #billing_state_field, #billing_country_field, #billing_reseller_phone_field, .woocommerce-additional-fields, #order_comments_field, #ship-to-different-address, .shipping_address, #shipping_first_name_field, #shipping_last_name_field, #shipping_company_field, #shipping_phone_field, #shipping_address_1_field, #shipping_address_2_field, #shipping_city_field, #shipping_state_field, #shipping_postcode_field, #shipping_country_field').hide().css('display', 'none');
+
+			// Ensure all shipping methods (Inside Dhaka, Outside Dhaka, COD charges, etc.) remain visible and accessible
+			$('.woocommerce-shipping-totals, tr.shipping, #shipping_method, .woocommerce-shipping-methods, .shipping_method, ul#shipping_method').show().css('display', '');
 
 			// Support for WooCommerce Checkout Blocks (Gutenberg)
 			$('.wc-block-checkout').each(function() {
-				$(this).find('.wc-block-checkout__additional-fields, .wc-block-components-order-note, .wc-block-checkout__shipping-option').hide();
+				$(this).find('.wc-block-checkout__additional-fields, .wc-block-components-order-note').hide();
+				$(this).find('.wc-block-checkout__shipping-option').show();
 				$(this).find('#billing-company, #shipping-company, #billing-city, #shipping-city, #billing-state, #shipping-state, #billing-address_2, #shipping-address_2').closest('.wc-block-components-text-input').hide();
 
 				$(this).find('#email, input[name="email"], input[type="email"]').each(function() {
