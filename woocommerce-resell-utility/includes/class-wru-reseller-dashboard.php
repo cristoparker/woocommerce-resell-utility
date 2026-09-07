@@ -242,8 +242,8 @@ class WRU_Reseller_Dashboard {
 		$user_id = get_current_user_id();
 		$user    = get_userdata( $user_id );
 
-		// Only users with 'wru_reseller' role or store managers/admins can view reseller dashboard
-		if ( ! user_can( $user_id, WRU_Reseller_Manager::ROLE_RESELLER ) && ! user_can( $user_id, 'manage_woocommerce' ) ) {
+		// Only approved resellers or store managers/admins can view reseller dashboard
+		if ( ! WRU_Reseller_Manager::is_reseller( $user_id ) ) {
 			?>
 			<div class="wru-dashboard-wrap">
 				<div class="wru-notice-restricted" style="background:#ffffff; border:1.5px solid #cbd5e1; border-radius:12px; padding:36px; text-align:center;">
@@ -468,8 +468,8 @@ class WRU_Reseller_Dashboard {
 		$user_id = get_current_user_id();
 		$user    = get_userdata( $user_id );
 
-		// Only users with 'wru_reseller' role or store managers/admins can view payouts hub
-		if ( ! user_can( $user_id, WRU_Reseller_Manager::ROLE_RESELLER ) && ! user_can( $user_id, 'manage_woocommerce' ) ) {
+		// Only approved resellers or store managers/admins can view payouts hub
+		if ( ! WRU_Reseller_Manager::is_reseller( $user_id ) ) {
 			?>
 			<div class="wru-dashboard-wrap">
 				<div class="wru-notice-restricted" style="background:#ffffff; border:1.5px solid #cbd5e1; border-radius:12px; padding:36px; text-align:center;">

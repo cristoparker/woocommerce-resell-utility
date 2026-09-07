@@ -5,6 +5,8 @@
 (function($) {
 	'use strict';
 
+	window.wru_admin = window.wru_admin || {};
+
 	$(document).ready(function() {
 
 		/* ==========================================================================

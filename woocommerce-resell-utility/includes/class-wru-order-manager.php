@@ -758,7 +758,7 @@ class WRU_Order_Manager {
 	 * @return mixed
 	 */
 	public function filter_reseller_checkout_field_values( $value, $input ) {
-		if ( is_user_logged_in() && ( current_user_can( WRU_Reseller_Manager::ROLE_RESELLER ) || current_user_can( 'manage_woocommerce' ) ) ) {
+		if ( is_user_logged_in() && WRU_Reseller_Manager::is_reseller() ) {
 			if ( in_array( $input, array( 'billing_first_name', 'billing_phone', 'billing_address_1', 'shipping_first_name', 'shipping_phone', 'shipping_address_1' ), true ) ) {
 				if ( ! isset( $_POST[ $input ] ) ) {
 					return '';

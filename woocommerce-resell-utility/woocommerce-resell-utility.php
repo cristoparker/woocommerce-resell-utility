@@ -197,10 +197,16 @@ final class WooCommerce_Resell_Utility {
 				__( 'রিসেলার', 'woocommerce-resell-utility' ),
 				array(
 					'read'         => true,
+					'wru_reseller' => true,
 					'edit_posts'   => false,
 					'delete_posts' => false,
 				)
 			);
+		} else {
+			$role = get_role( 'wru_reseller' );
+			if ( $role && ! $role->has_cap( 'wru_reseller' ) ) {
+				$role->add_cap( 'wru_reseller' );
+			}
 		}
 		add_rewrite_endpoint( WRU_Reseller_Dashboard::ENDPOINT, EP_ROOT | EP_PAGES );
 		add_rewrite_endpoint( WRU_Reseller_Dashboard::ENDPOINT_PAYOUTS, EP_ROOT | EP_PAGES );

@@ -233,7 +233,7 @@ class WRU_Buy_Now {
 
 		$cart_item_data = array(
 			'wru_reseller_price' => $reseller_price,
-			'unique_key'         => md5( microtime() . rand() ),
+			'unique_key'         => md5( microtime() . wp_rand() ),
 		);
 
 		WC()->cart->add_to_cart( $product_id, $quantity, 0, array(), $cart_item_data );

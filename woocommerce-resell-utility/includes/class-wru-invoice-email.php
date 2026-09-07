@@ -249,11 +249,12 @@ class WRU_Invoice_Email {
 			wp_die( esc_html__( 'অর্ডার পাওয়া যায়নি।', 'woocommerce-resell-utility' ) );
 		}
 
-		// Check permission: Admin or order owner.
-		$current_user_id = get_current_user_id();
-		$order_user_id   = $order->get_customer_id();
+		// Check permission: Admin or order owner/reseller.
+		$current_user_id  = get_current_user_id();
+		$order_user_id    = (int) $order->get_customer_id();
+		$reseller_meta_id = (int) $order->get_meta( '_wru_reseller_user_id' );
 
-		if ( ! current_user_can( 'manage_woocommerce' ) && ( 0 === $order_user_id || $current_user_id !== $order_user_id ) ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) && $current_user_id !== $order_user_id && ( ! $reseller_meta_id || $current_user_id !== $reseller_meta_id ) ) {
 			wp_die( esc_html__( 'আপনার এই ইনভয়েস দেখার অনুমতি নেই।', 'woocommerce-resell-utility' ) );
 		}
 

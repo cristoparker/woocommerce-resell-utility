@@ -5,6 +5,9 @@
 (function($) {
 	'use strict';
 
+	window.wru_vars = window.wru_vars || {};
+	window.wru_vars.i18n = window.wru_vars.i18n || {};
+
 	$(document).ready(function() {
 
 		/* ==========================================================================

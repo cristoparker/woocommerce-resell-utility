@@ -93,7 +93,7 @@ class WRU_Reseller_Fields {
 				</div>
 				<div class="wru-calc-item wru-profit-highlight">
 					<span class="wru-calc-label"><?php esc_html_e( 'আপনার সম্ভাব্য লাভ:', 'woocommerce-resell-utility' ); ?></span>
-					<span class="wru-calc-val wru-profit-amount" id="wru-profit-display">৳0.00</span>
+					<span class="wru-calc-val wru-profit-amount" id="wru-profit-display"><?php echo esc_html( $currency_symbol ); ?>0.00</span>
 				</div>
 			</div>
 

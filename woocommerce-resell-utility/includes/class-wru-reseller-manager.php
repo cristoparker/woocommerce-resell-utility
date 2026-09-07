@@ -493,8 +493,8 @@ class WRU_Reseller_Manager {
 
 		$user_id = get_current_user_id();
 
-		// Verify user has reseller role or admin
-		if ( ! user_can( $user_id, self::ROLE_RESELLER ) && ! user_can( $user_id, 'manage_woocommerce' ) ) {
+		// Verify user is an approved reseller or admin
+		if ( ! self::is_reseller( $user_id ) ) {
 			wc_add_notice( __( 'শুধুমাত্র নিবন্ধিত রিসেলারগণ ক্যাশআউট রিকোয়েস্ট করতে পারবেন।', 'woocommerce-resell-utility' ), 'error' );
 			return;
 		}
@@ -2200,8 +2200,10 @@ class WRU_Reseller_Manager {
 								</td>
 								<td>
 									<?php if ( $user ) : ?>
-										<strong><?php echo esc_html( $user->display_name ); ?></strong>
-										<br><span style="font-size:12px; color:#64748b;"><?php echo esc_html( $user->user_email ); ?></span>
+										<div class="wru-clickable-reseller wru-btn-view-reseller" data-user-id="<?php echo esc_attr( $reseller_id ); ?>" style="cursor:pointer;" title="<?php esc_attr_e( 'ক্লিক করে সম্পূর্ণ প্রোফাইল ও আপলোডকৃত NID দেখুন', 'woocommerce-resell-utility' ); ?>">
+											<strong><?php echo esc_html( $user->display_name ); ?></strong>
+											<br><span style="font-size:12px; color:#64748b;"><?php echo esc_html( $user->user_email ); ?></span>
+										</div>
 									<?php else : ?>
 										<span style="color:#94a3b8;"><?php esc_html_e( 'ইউজার বিলুপ্ত', 'woocommerce-resell-utility' ); ?></span>
 									<?php endif; ?>
