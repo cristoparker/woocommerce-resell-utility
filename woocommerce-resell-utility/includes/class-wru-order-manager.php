@@ -54,14 +54,10 @@ class WRU_Order_Manager {
 
 		// Localize and customize checkout fields for dropshipping resellers.
 		add_filter( 'woocommerce_checkout_fields', array( $this, 'customize_checkout_fields' ), 999 );
-		add_filter( 'woocommerce_billing_fields', array( $this, 'customize_billing_fields' ), 999 );
-		add_filter( 'woocommerce_shipping_fields', array( $this, 'customize_shipping_fields' ), 999 );
-		add_filter( 'woocommerce_default_address_fields', array( $this, 'customize_default_address_fields' ), 999 );
 		add_filter( 'woocommerce_checkout_posted_data', array( $this, 'filter_checkout_posted_data' ) );
 		add_filter( 'woocommerce_checkout_get_value', array( $this, 'filter_reseller_checkout_field_values' ), 10, 2 );
 		add_action( 'woocommerce_before_checkout_form', array( $this, 'render_checkout_banner' ), 5 );
 		add_filter( 'woocommerce_enable_order_notes_field', '__return_false', 999 );
-		add_filter( 'woocommerce_cart_needs_shipping_address', '__return_false', 999 );
 
 		// Reseller role verification during checkout confirmation & order processing.
 		add_action( 'woocommerce_checkout_process', array( $this, 'validate_checkout_reseller_role' ) );
@@ -661,106 +657,7 @@ class WRU_Order_Manager {
 		return $fields;
 	}
 
-	/**
-	 * Customize billing fields directly.
-	 *
-	 * @param array $fields Billing fields.
-	 * @return array
-	 */
-	public function customize_billing_fields( $fields ) {
-		$new_fields = array();
 
-		$new_fields['billing_first_name'] = array(
-			'label'       => __( 'কাস্টমারের নাম', 'woocommerce-resell-utility' ),
-			'placeholder' => __( 'কাস্টমারের সম্পূর্ণ নাম লিখুন', 'woocommerce-resell-utility' ),
-			'required'    => true,
-			'class'       => array( 'form-row-wide' ),
-			'priority'    => 10,
-		);
-
-		$new_fields['billing_phone'] = array(
-			'label'       => __( 'কাস্টমারের মোবাইল নাম্বার', 'woocommerce-resell-utility' ),
-			'placeholder' => __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' ),
-			'required'    => true,
-			'type'        => 'tel',
-			'class'       => array( 'form-row-wide' ),
-			'priority'    => 20,
-		);
-
-		$new_fields['billing_address_1'] = array(
-			'label'       => __( 'কাস্টমারের ঠিকানা', 'woocommerce-resell-utility' ),
-			'placeholder' => __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম, থানা ও জেলা লিখুন', 'woocommerce-resell-utility' ),
-			'required'    => true,
-			'class'       => array( 'form-row-wide' ),
-			'priority'    => 30,
-		);
-
-		$new_fields['billing_postcode'] = array(
-			'label'       => __( 'জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' ),
-			'placeholder' => __( 'যেমন: 1205 (ঐচ্ছিক)', 'woocommerce-resell-utility' ),
-			'required'    => false,
-			'class'       => array( 'form-row-wide' ),
-			'priority'    => 40,
-		);
-
-		$new_fields['billing_email'] = array(
-			'label'       => __( 'রিসেলারের ইমেইল', 'woocommerce-resell-utility' ),
-			'placeholder' => __( 'রিসেলারের ইমেইল লিখুন', 'woocommerce-resell-utility' ),
-			'required'    => true,
-			'type'        => 'email',
-			'class'       => array( 'form-row-wide' ),
-			'priority'    => 50,
-			'default'     => is_user_logged_in() ? wp_get_current_user()->user_email : '',
-		);
-
-		return $new_fields;
-	}
-
-	/**
-	 * Suppress separate shipping form since billing is the customer delivery address.
-	 *
-	 * @param array $fields Shipping fields.
-	 * @return array
-	 */
-	public function customize_shipping_fields( $fields ) {
-		return array();
-	}
-
-	/**
-	 * Customize default address fields directly.
-	 *
-	 * @param array $fields Address fields.
-	 * @return array
-	 */
-	public function customize_default_address_fields( $fields ) {
-		if ( isset( $fields['first_name'] ) ) {
-			$fields['first_name']['label']       = __( 'কাস্টমারের নাম', 'woocommerce-resell-utility' );
-			$fields['first_name']['placeholder'] = __( 'কাস্টমারের সম্পূর্ণ নাম লিখুন', 'woocommerce-resell-utility' );
-			$fields['first_name']['required']    = true;
-			$fields['first_name']['class']       = array( 'form-row-wide' );
-		}
-		unset( $fields['last_name'] );
-
-		if ( isset( $fields['address_1'] ) ) {
-			$fields['address_1']['label']       = __( 'কাস্টমারের ঠিকানা', 'woocommerce-resell-utility' );
-			$fields['address_1']['placeholder'] = __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম, থানা ও জেলা লিখুন', 'woocommerce-resell-utility' );
-			$fields['address_1']['required']    = true;
-			$fields['address_1']['class']       = array( 'form-row-wide' );
-		}
-		unset( $fields['address_2'] );
-		unset( $fields['company'] );
-		unset( $fields['city'] );
-		unset( $fields['state'] );
-
-		if ( isset( $fields['postcode'] ) ) {
-			$fields['postcode']['label']       = __( 'জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['postcode']['placeholder'] = __( 'যেমন: 1205 (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['postcode']['required']    = false;
-			$fields['postcode']['class']       = array( 'form-row-wide' );
-		}
-
-		return $fields;
-	}
 
 	/**
 	 * Ensure last name & required defaults are populated so WooCommerce core validation succeeds.
@@ -838,25 +735,35 @@ class WRU_Order_Manager {
 	 * @return float
 	 */
 	public static function get_cart_courier_collection_amount() {
-		$cart = WC()->cart;
-		if ( ! $cart || $cart->is_empty() ) {
+		if ( ! function_exists( 'WC' ) || ! isset( WC()->cart ) || ! is_object( WC()->cart ) || WC()->cart->is_empty() ) {
 			return 0.0;
 		}
 
+		$cart = WC()->cart;
 		$total_collection = 0.0;
 		foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
-			$qty     = (int) $cart_item['quantity'];
+			$qty     = (int) ( isset( $cart_item['quantity'] ) ? $cart_item['quantity'] : 1 );
 			$product = isset( $cart_item['data'] ) ? $cart_item['data'] : null;
 
 			if ( isset( $cart_item['wru_reseller_price'] ) && (float) $cart_item['wru_reseller_price'] > 0 ) {
 				$res_price = (float) $cart_item['wru_reseller_price'];
 			} else {
-				$wholesale_price = $product ? (float) $product->get_price() : 0;
-				$res_price       = $product ? ( (float) $product->get_regular_price() ?: $wholesale_price ) : 0;
+				$wholesale_price = $product ? (float) $product->get_price() : 0.0;
+				$res_price       = $product ? ( (float) $product->get_regular_price() ?: $wholesale_price ) : 0.0;
 			}
 			$total_collection += ( $res_price * $qty );
 		}
 
+		$shipping_total = method_exists( $cart, 'get_shipping_total' ) ? (float) $cart->get_shipping_total() : 0.0;
+		$shipping_tax   = method_exists( $cart, 'get_shipping_tax' ) ? (float) $cart->get_shipping_tax() : 0.0;
+
+		return (float) ( $total_collection + $shipping_total + $shipping_tax );
+	}
+
+	/**
+	 * Render live Courier Collection Amount (COD) in Checkout Order Summary Review Table.
+	 */
+	public function render_checkout_courier_collection_row() {
 		$collection_amount = self::get_cart_courier_collection_amount();
 		if ( $collection_amount <= 0 ) {
 			return;
