@@ -176,7 +176,7 @@ final class WooCommerce_Resell_Utility {
 			'is_reseller'     => WRU_Reseller_Manager::is_reseller() ? 1 : 0,
 			'reseller_status' => is_user_logged_in() ? get_user_meta( get_current_user_id(), '_wru_reseller_status', true ) : '',
 			'myaccount_url'   => function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : '',
-			'courier_collection_amount' => ( function_exists( 'is_checkout' ) && is_checkout() && class_exists( 'WRU_Order_Manager' ) ) ? WRU_Order_Manager::get_cart_courier_collection_amount() : 0,
+			'courier_collection_amount' => 0,
 			'i18n'            => array(
 				'copied'           => __( 'ডেসক্রিপশন কপি হয়েছে!', 'woocommerce-resell-utility' ),
 				'profit_prefix'    => __( 'আপনার আনুমানিক লাভ: ', 'woocommerce-resell-utility' ),

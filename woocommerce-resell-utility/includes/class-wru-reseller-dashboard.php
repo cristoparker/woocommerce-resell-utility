@@ -148,33 +148,39 @@ class WRU_Reseller_Dashboard {
 			update_user_meta( $user_id, '_wru_payout_notes', $notes );
 		}
 
-		// Handle NID Document Uploads
-		if ( ! function_exists( 'wp_handle_upload' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-		}
-		$upload_overrides = array(
-			'test_form' => false,
-			'mimes'     => array(
-				'jpg|jpeg|jpe' => 'image/jpeg',
-				'png'          => 'image/png',
-				'webp'         => 'image/webp',
-				'pdf'          => 'application/pdf',
-			),
-		);
+		// Handle NID Document Uploads — only if NID is NOT already uploaded (locked after initial submission)
+		$existing_nid_front = get_user_meta( $user_id, '_wru_nid_front_url', true );
+		$existing_nid_back  = get_user_meta( $user_id, '_wru_nid_back_url', true );
+		$nid_already_exists = ! empty( $existing_nid_front ) && ! empty( $existing_nid_back );
 
-		if ( ! empty( $_FILES['wru_reseller_nid_front']['name'] ) && empty( $_FILES['wru_reseller_nid_front']['error'] ) ) {
-			$upload_front = wp_handle_upload( $_FILES['wru_reseller_nid_front'], $upload_overrides );
-			if ( ! empty( $upload_front['url'] ) ) {
-				update_user_meta( $user_id, '_wru_nid_front_url', $upload_front['url'] );
-				update_user_meta( $user_id, '_wru_nid_front_file', $upload_front['file'] );
+		if ( ! $nid_already_exists ) {
+			if ( ! function_exists( 'wp_handle_upload' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/file.php';
 			}
-		}
+			$upload_overrides = array(
+				'test_form' => false,
+				'mimes'     => array(
+					'jpg|jpeg|jpe' => 'image/jpeg',
+					'png'          => 'image/png',
+					'webp'         => 'image/webp',
+					'pdf'          => 'application/pdf',
+				),
+			);
 
-		if ( ! empty( $_FILES['wru_reseller_nid_back']['name'] ) && empty( $_FILES['wru_reseller_nid_back']['error'] ) ) {
-			$upload_back = wp_handle_upload( $_FILES['wru_reseller_nid_back'], $upload_overrides );
-			if ( ! empty( $upload_back['url'] ) ) {
-				update_user_meta( $user_id, '_wru_nid_back_url', $upload_back['url'] );
-				update_user_meta( $user_id, '_wru_nid_back_file', $upload_back['file'] );
+			if ( ! empty( $_FILES['wru_reseller_nid_front']['name'] ) && empty( $_FILES['wru_reseller_nid_front']['error'] ) ) {
+				$upload_front = wp_handle_upload( $_FILES['wru_reseller_nid_front'], $upload_overrides );
+				if ( ! empty( $upload_front['url'] ) ) {
+					update_user_meta( $user_id, '_wru_nid_front_url', $upload_front['url'] );
+					update_user_meta( $user_id, '_wru_nid_front_file', $upload_front['file'] );
+				}
+			}
+
+			if ( ! empty( $_FILES['wru_reseller_nid_back']['name'] ) && empty( $_FILES['wru_reseller_nid_back']['error'] ) ) {
+				$upload_back = wp_handle_upload( $_FILES['wru_reseller_nid_back'], $upload_overrides );
+				if ( ! empty( $upload_back['url'] ) ) {
+					update_user_meta( $user_id, '_wru_nid_back_url', $upload_back['url'] );
+					update_user_meta( $user_id, '_wru_nid_back_file', $upload_back['file'] );
+				}
 			}
 		}
 
@@ -777,32 +783,64 @@ class WRU_Reseller_Dashboard {
 						<textarea name="wru_payout_notes" id="wru_payout_notes" rows="2" class="wru-textarea" placeholder="<?php esc_attr_e( 'প্রয়োজনীয় বিবরণ...', 'woocommerce-resell-utility' ); ?>"><?php echo esc_textarea( $payout_notes ); ?></textarea>
 					</div>
 
-					<!-- NID Upload / Update Section -->
+					<!-- NID Document Section -->
 					<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:16px 0;">
-						<h4 style="margin:0 0 10px 0; color:#0f172a; font-size:14px;"><?php esc_html_e( 'জাতীয় পরিচয়পত্র (NID ডকুমেন্টস আপডেট)', 'woocommerce-resell-utility' ); ?></h4>
-						<p style="margin:0 0 12px 0; font-size:12.5px; color:#64748b;">
-							<?php esc_html_e( 'আপনার NID কার্ড পরিবর্তন বা নতুন করে আপলোড করতে চাইলে নিচের ফাইল নির্বাচন করুন (JPG, PNG, WEBP বা PDF, সর্বোচ্চ ৫MB):', 'woocommerce-resell-utility' ); ?>
-						</p>
-						<div class="wru-form-row">
-							<div class="wru-field-col">
-								<label for="wru_reseller_nid_front">
-									<?php esc_html_e( 'NID কার্ডের সামনের অংশ (Front):', 'woocommerce-resell-utility' ); ?>
-									<?php if ( ! empty( $reseller_nid_front ) ) : ?>
-										<a href="<?php echo esc_url( $reseller_nid_front ); ?>" target="_blank" style="color:#0284c7; font-size:12px; margin-left:6px; font-weight:normal;">[বর্তমান ফাইল দেখুন]</a>
+						<?php
+						$nid_already_uploaded = ! empty( $reseller_nid_front ) && ! empty( $reseller_nid_back );
+						if ( $nid_already_uploaded ) :
+							// NID already exists — show view-only (no update allowed)
+						?>
+							<h4 style="margin:0 0 10px 0; color:#0f172a; font-size:14px;">
+								<?php esc_html_e( 'জাতীয় পরিচয়পত্র (NID ডকুমেন্টস)', 'woocommerce-resell-utility' ); ?>
+								<span style="background:#dcfce7; color:#166534; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; margin-left:8px;"><?php esc_html_e( 'যাচাইকৃত', 'woocommerce-resell-utility' ); ?></span>
+							</h4>
+							<p style="margin:0 0 12px 0; font-size:12.5px; color:#64748b;">
+								<?php esc_html_e( 'আপনার NID ডকুমেন্টস ইতিমধ্যে জমা দেওয়া হয়েছে এবং যাচাই সম্পন্ন। নিরাপত্তার জন্য NID পুনরায় আপডেট করা যাবে না। প্রয়োজনে অ্যাডমিনের সাথে যোগাযোগ করুন।', 'woocommerce-resell-utility' ); ?>
+							</p>
+							<div class="wru-form-row">
+								<div class="wru-field-col" style="text-align:center;">
+									<label style="font-weight:600; font-size:13px; display:block; margin-bottom:6px;">
+										<?php esc_html_e( 'NID সামনের অংশ (Front)', 'woocommerce-resell-utility' ); ?>
+									</label>
+									<?php if ( preg_match( '/\.(pdf)$/i', $reseller_nid_front ) ) : ?>
+										<a href="<?php echo esc_url( $reseller_nid_front ); ?>" target="_blank" style="color:#0284c7; font-weight:600;"><?php esc_html_e( 'PDF ডকুমেন্ট দেখুন', 'woocommerce-resell-utility' ); ?></a>
+									<?php else : ?>
+										<img src="<?php echo esc_url( $reseller_nid_front ); ?>" alt="NID Front" style="max-width:100%; max-height:150px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />
 									<?php endif; ?>
-								</label>
-								<input type="file" name="wru_reseller_nid_front" id="wru_reseller_nid_front" accept="image/*,application/pdf" class="wru-input-text" style="padding:6px; font-size:12.5px;" />
-							</div>
-							<div class="wru-field-col">
-								<label for="wru_reseller_nid_back">
-									<?php esc_html_e( 'NID কার্ডের পেছনের অংশ (Back):', 'woocommerce-resell-utility' ); ?>
-									<?php if ( ! empty( $reseller_nid_back ) ) : ?>
-										<a href="<?php echo esc_url( $reseller_nid_back ); ?>" target="_blank" style="color:#0284c7; font-size:12px; margin-left:6px; font-weight:normal;">[বর্তমান ফাইল দেখুন]</a>
+								</div>
+								<div class="wru-field-col" style="text-align:center;">
+									<label style="font-weight:600; font-size:13px; display:block; margin-bottom:6px;">
+										<?php esc_html_e( 'NID পেছনের অংশ (Back)', 'woocommerce-resell-utility' ); ?>
+									</label>
+									<?php if ( preg_match( '/\.(pdf)$/i', $reseller_nid_back ) ) : ?>
+										<a href="<?php echo esc_url( $reseller_nid_back ); ?>" target="_blank" style="color:#0284c7; font-weight:600;"><?php esc_html_e( 'PDF ডকুমেন্ট দেখুন', 'woocommerce-resell-utility' ); ?></a>
+									<?php else : ?>
+										<img src="<?php echo esc_url( $reseller_nid_back ); ?>" alt="NID Back" style="max-width:100%; max-height:150px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />
 									<?php endif; ?>
-								</label>
-								<input type="file" name="wru_reseller_nid_back" id="wru_reseller_nid_back" accept="image/*,application/pdf" class="wru-input-text" style="padding:6px; font-size:12.5px;" />
+								</div>
 							</div>
-						</div>
+						<?php else :
+							// NID not yet uploaded — allow upload
+						?>
+							<h4 style="margin:0 0 10px 0; color:#0f172a; font-size:14px;"><?php esc_html_e( 'জাতীয় পরিচয়পত্র (NID ডকুমেন্টস আপলোড)', 'woocommerce-resell-utility' ); ?></h4>
+							<p style="margin:0 0 12px 0; font-size:12.5px; color:#64748b;">
+								<?php esc_html_e( 'আপনার NID কার্ডের উভয় পাশের ছবি আপলোড করুন (JPG, PNG, WEBP বা PDF, সর্বোচ্চ ৫MB)। একবার আপলোড করলে পুনরায় পরিবর্তন করা যাবে না।', 'woocommerce-resell-utility' ); ?>
+							</p>
+							<div class="wru-form-row">
+								<div class="wru-field-col">
+									<label for="wru_reseller_nid_front">
+										<?php esc_html_e( 'NID কার্ডের সামনের অংশ (Front):', 'woocommerce-resell-utility' ); ?>
+									</label>
+									<input type="file" name="wru_reseller_nid_front" id="wru_reseller_nid_front" accept="image/*,application/pdf" class="wru-input-text" style="padding:6px; font-size:12.5px;" />
+								</div>
+								<div class="wru-field-col">
+									<label for="wru_reseller_nid_back">
+										<?php esc_html_e( 'NID কার্ডের পেছনের অংশ (Back):', 'woocommerce-resell-utility' ); ?>
+									</label>
+									<input type="file" name="wru_reseller_nid_back" id="wru_reseller_nid_back" accept="image/*,application/pdf" class="wru-input-text" style="padding:6px; font-size:12.5px;" />
+								</div>
+							</div>
+						<?php endif; ?>
 					</div>
 
 					<button type="submit" name="wru_save_payout" value="1" class="button wru-save-payout-btn">

@@ -701,7 +701,7 @@ class WRU_Reseller_Manager {
 		if ( $user_id ) {
 			$user = get_userdata( $user_id );
 			if ( $user ) {
-				$user->add_role( self::ROLE_RESELLER );
+				$user->set_role( self::ROLE_RESELLER );
 				update_user_meta( $user_id, '_wru_reseller_status', 'approved' );
 				wp_safe_redirect( add_query_arg( array(
 					'page'    => 'wru-resellers',
@@ -734,8 +734,8 @@ class WRU_Reseller_Manager {
 
 		$user = get_userdata( $user_id );
 		if ( $user ) {
-			// Grant reseller role
-			$user->add_role( self::ROLE_RESELLER );
+			// Grant reseller role (replaces customer role)
+			$user->set_role( self::ROLE_RESELLER );
 			update_user_meta( $user_id, '_wru_reseller_status', 'approved' );
 			update_user_meta( $user_id, '_wru_reseller_approved_at', current_time( 'mysql' ) );
 			update_user_meta( $user_id, '_wru_reseller_approved_by', get_current_user_id() );
