@@ -198,6 +198,7 @@ final class WooCommerce_Resell_Utility {
 			);
 		}
 		add_rewrite_endpoint( WRU_Reseller_Dashboard::ENDPOINT, EP_ROOT | EP_PAGES );
+		add_rewrite_endpoint( WRU_Reseller_Dashboard::ENDPOINT_PAYOUTS, EP_ROOT | EP_PAGES );
 		flush_rewrite_rules();
 	}
 

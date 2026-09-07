@@ -260,10 +260,37 @@
 			var profit     = Math.max(0, (sellPrice - wholesale) * qty - totalPack);
 
 			$input.closest('.wru-checkout-edit-box').find('.wru-checkout-profit-val').text(currSym + profit.toFixed(2));
+
+			// Recalculate live courier collection amount instantly
+			recalculateCheckoutCourierCollection();
 		});
+
+		function recalculateCheckoutCourierCollection() {
+			var totalItems = 0;
+			var hasInputs  = false;
+			$('.wru-checkout-price-input').each(function() {
+				hasInputs = true;
+				var val = parseFloat($(this).val());
+				var ws  = parseFloat($(this).data('wholesale')) || 0;
+				var p   = (!isNaN(val) && val > 0) ? val : ws;
+				var q   = parseInt($(this).data('qty'), 10) || 1;
+				totalItems += (p * q);
+			});
+
+			if (hasInputs) {
+				var shippingText = $('.woocommerce-shipping-totals .amount, .shipping .amount').first().text();
+				var shippingNum  = parseFloat(shippingText.replace(/[^0-9.]/g, '')) || 0;
+				var currSym      = (typeof wru_vars !== 'undefined' && wru_vars.currency_symbol) ? wru_vars.currency_symbol : '৳';
+				var totalCol     = totalItems + shippingNum;
+				$('.wru-checkout-collection-amount').html('<span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">' + currSym + '</span>' + totalCol.toFixed(2) + '</bdi></span>');
+			}
+		}
 
 		// Debounced AJAX update when reseller changes value
 		$(document).on('change blur', '.wru-checkout-price-input', function() {
+			if (typeof wru_vars === 'undefined' || !wru_vars.ajax_url) {
+				return;
+			}
 			var $input   = $(this);
 			var cartKey  = $input.data('cart-key');
 			var newPrice = parseFloat($input.val()) || 0;
@@ -279,9 +306,35 @@
 						nonce: wru_vars.nonce,
 						cart_key: cartKey,
 						new_price: newPrice
+					},
+					success: function() {
+						$(document.body).trigger('update_checkout');
 					}
 				});
-			}, 250);
+			}, 300);
+		});
+
+		// Ensure multipart enctype on registration form for NID uploads
+		$('form.woocommerce-form-register, form.register').attr('enctype', 'multipart/form-data');
+
+		// NID Image selection preview on register form
+		$('#wru_reg_nid_front, #wru_reg_nid_back').on('change', function() {
+			var input = this;
+			if (input.files && input.files[0]) {
+				var file = input.files[0];
+				if (file.type.match('image.*')) {
+					var reader = new FileReader();
+					reader.onload = function(e) {
+						var $existing = $(input).siblings('.wru-nid-local-preview');
+						if ($existing.length) {
+							$existing.attr('src', e.target.result);
+						} else {
+							$(input).after('<img class="wru-nid-local-preview" src="' + e.target.result + '" style="display:block; max-height:80px; margin-top:6px; border-radius:4px; border:1px solid #cbd5e1;" />');
+						}
+					};
+					reader.readAsDataURL(file);
+				}
+			}
 		});
 
 

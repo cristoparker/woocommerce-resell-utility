@@ -154,5 +154,113 @@
 			$('#wru-delete-reseller-modal').fadeIn(200);
 		});
 
+		// 6. Reject Reseller Applicant Modal
+		$(document).on('click', '.wru-btn-reject-applicant', function(e) {
+			e.preventDefault();
+			var userId   = $(this).data('user-id');
+			var userName = $(this).data('user-name');
+
+			$('#wru_rej_applicant_id').val(userId);
+			$('#wru_rej_applicant_name').text(userName);
+			$('#wru_applicant_rej_reason').val('');
+
+			$('#wru-reject-applicant-modal').fadeIn(200);
+		});
+
+
+		/* ==========================================================================
+		   3. Product Edit Screen Price Label Renaming
+		   (Regular price -> Market price, Sale price -> Resell price)
+		   ========================================================================== */
+
+		function replaceProductPriceLabels() {
+			if (!$('body').hasClass('post-type-product')) {
+				return;
+			}
+
+			// Simple Product General tab labels
+			$('label[for="_regular_price"]').each(function() {
+				var text = $(this).html();
+				if (text && text.indexOf('Market price') === -1) {
+					$(this).html(text.replace(/Regular price/gi, 'Market price'));
+				}
+			});
+
+			$('label[for="_sale_price"]').each(function() {
+				var text = $(this).html();
+				if (text && text.indexOf('Resell price') === -1) {
+					$(this).html(text.replace(/Sale price/gi, 'Resell price'));
+				}
+			});
+
+			// Variable Product Variations labels
+			$('label[for^="variable_regular_price_"], .variable_pricing label').each(function() {
+				var text = $(this).html();
+				if (text && text.indexOf('Market price') === -1 && /Regular price/i.test(text)) {
+					$(this).html(text.replace(/Regular price/gi, 'Market price'));
+				}
+			});
+
+			$('label[for^="variable_sale_price_"], .variable_pricing label').each(function() {
+				var text = $(this).html();
+				if (text && text.indexOf('Resell price') === -1 && /Sale price/i.test(text)) {
+					$(this).html(text.replace(/Sale price/gi, 'Resell price'));
+				}
+			});
+
+			// Variation input placeholders
+			$('input[name^="variable_regular_price"]').attr('placeholder', function(i, val) {
+				return val ? val.replace(/Regular price/gi, 'Market price') : val;
+			});
+			$('input[name^="variable_sale_price"]').attr('placeholder', function(i, val) {
+				return val ? val.replace(/Sale price/gi, 'Resell price') : val;
+			});
+
+			// Variations bulk action dropdown options
+			$('#field_to_edit option').each(function() {
+				var optText = $(this).text();
+				if (optText.indexOf('Regular price') !== -1) {
+					$(this).text(optText.replace(/Regular price/gi, 'Market price'));
+				}
+				if (optText.indexOf('Sale price') !== -1) {
+					$(this).text(optText.replace(/Sale price/gi, 'Resell price'));
+				}
+			});
+
+			// Quick Edit in Products List table
+			$('.inline-edit-col label').each(function() {
+				var $title = $(this).find('.title');
+				if ($title.length) {
+					var t = $title.text();
+					if (t.indexOf('Regular price') !== -1) {
+						$title.text(t.replace(/Regular price/gi, 'Market price'));
+					}
+					if (t.indexOf('Sale price') !== -1) {
+						$title.text(t.replace(/Sale price/gi, 'Resell price'));
+					}
+				}
+			});
+		}
+
+		replaceProductPriceLabels();
+
+		$(document).on('click', '.editinline', function() {
+			setTimeout(replaceProductPriceLabels, 100);
+		});
+
+		// Trigger on variation events and tab switching
+		$(document).on('woocommerce_variations_loaded woocommerce_variations_added woocommerce_variations_saved_ajax', function() {
+			replaceProductPriceLabels();
+		});
+
+		$('#woocommerce-product-data').on('woocommerce_variations_loaded', function() {
+			replaceProductPriceLabels();
+		});
+
+		// Check when clicking product data tabs (e.g. variations tab)
+		$(document).on('click', '.product_data_tabs a', function() {
+			setTimeout(replaceProductPriceLabels, 150);
+		});
+
 	});
 })(jQuery);

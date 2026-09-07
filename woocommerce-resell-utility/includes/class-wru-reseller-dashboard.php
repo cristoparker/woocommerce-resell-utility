@@ -11,7 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WRU_Reseller_Dashboard {
 
-	const ENDPOINT = 'reseller-dashboard';
+	const ENDPOINT         = 'reseller-dashboard';
+	const ENDPOINT_PAYOUTS = 'reseller-payouts';
 
 	/**
 	 * Init class.
@@ -31,8 +32,11 @@ class WRU_Reseller_Dashboard {
 		}
 
 		add_action( 'init', array( $this, 'add_endpoint' ) );
+		add_filter( 'query_vars', array( $this, 'add_wp_query_vars' ) );
+		add_filter( 'woocommerce_get_query_vars', array( $this, 'add_wc_query_vars' ) );
 		add_filter( 'woocommerce_account_menu_items', array( $this, 'add_menu_item' ) );
 		add_action( 'woocommerce_account_' . self::ENDPOINT . '_endpoint', array( $this, 'render_dashboard_content' ) );
+		add_action( 'woocommerce_account_' . self::ENDPOINT_PAYOUTS . '_endpoint', array( $this, 'render_payouts_content' ) );
 
 		// Save payout details form.
 		add_action( 'template_redirect', array( $this, 'save_payout_details' ) );
@@ -42,14 +46,44 @@ class WRU_Reseller_Dashboard {
 	}
 
 	/**
-	 * Add custom rewrite endpoint.
+	 * Add custom rewrite endpoints.
 	 */
 	public function add_endpoint() {
 		add_rewrite_endpoint( self::ENDPOINT, EP_ROOT | EP_PAGES );
+		add_rewrite_endpoint( self::ENDPOINT_PAYOUTS, EP_ROOT | EP_PAGES );
+
+		if ( ! get_option( 'wru_flush_rewrite_v2_payouts' ) ) {
+			flush_rewrite_rules( false );
+			update_option( 'wru_flush_rewrite_v2_payouts', 'yes' );
+		}
 	}
 
 	/**
-	 * Add custom tab into My Account menu items.
+	 * Register WP query vars.
+	 *
+	 * @param array $vars Query vars.
+	 * @return array
+	 */
+	public function add_wp_query_vars( $vars ) {
+		$vars[] = self::ENDPOINT;
+		$vars[] = self::ENDPOINT_PAYOUTS;
+		return $vars;
+	}
+
+	/**
+	 * Register WooCommerce query vars.
+	 *
+	 * @param array $vars Query vars.
+	 * @return array
+	 */
+	public function add_wc_query_vars( $vars ) {
+		$vars[ self::ENDPOINT ]         = self::ENDPOINT;
+		$vars[ self::ENDPOINT_PAYOUTS ] = self::ENDPOINT_PAYOUTS;
+		return $vars;
+	}
+
+	/**
+	 * Add custom tabs into My Account menu items.
 	 *
 	 * @param array $items Menu items.
 	 * @return array
@@ -58,15 +92,16 @@ class WRU_Reseller_Dashboard {
 		$new_items = array();
 
 		foreach ( $items as $key => $title ) {
-			// Place reseller dashboard right after dashboard or orders.
 			$new_items[ $key ] = $title;
 			if ( 'orders' === $key ) {
-				$new_items[ self::ENDPOINT ] = __( 'Reseller Dashboard', 'woocommerce-resell-utility' );
+				$new_items[ self::ENDPOINT ]         = __( 'Reseller Dashboard', 'woocommerce-resell-utility' );
+				$new_items[ self::ENDPOINT_PAYOUTS ] = __( 'Reseller Cash & Payouts', 'woocommerce-resell-utility' );
 			}
 		}
 
 		if ( ! isset( $new_items[ self::ENDPOINT ] ) ) {
-			$new_items[ self::ENDPOINT ] = __( 'Reseller Dashboard', 'woocommerce-resell-utility' );
+			$new_items[ self::ENDPOINT ]         = __( 'Reseller Dashboard', 'woocommerce-resell-utility' );
+			$new_items[ self::ENDPOINT_PAYOUTS ] = __( 'Reseller Cash & Payouts', 'woocommerce-resell-utility' );
 		}
 
 		return $new_items;
@@ -101,9 +136,10 @@ class WRU_Reseller_Dashboard {
 		}
 		update_user_meta( $user_id, '_wru_payout_method', $method );
 		update_user_meta( $user_id, '_wru_payout_number', $number );
-		update_user_meta( $user_id, '_wru_payout_notes', $notes );
-
 		wc_add_notice( __( 'আপনার পেআউট ও শপ/কোম্পানির তথ্য সফলভাবে সংরক্ষিত হয়েছে।', 'woocommerce-resell-utility' ), 'success' );
+
+		wp_safe_redirect( wc_get_account_endpoint_url( self::ENDPOINT_PAYOUTS ) );
+		exit;
 	}
 
 	/**
@@ -192,26 +228,8 @@ class WRU_Reseller_Dashboard {
 		$pending_profit     = $balance_data['pending_profit'];
 		$cancelled_penalty  = $balance_data['cancelled_penalty'];
 
-		// Saved payout & brand details
-		$company_name  = get_user_meta( $user_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $user_id, 'billing_company', true );
-		$reseller_phone= get_user_meta( $user_id, '_wru_reseller_phone', true );
-		$payout_method = get_user_meta( $user_id, '_wru_payout_method', true );
-		$payout_number = get_user_meta( $user_id, '_wru_payout_number', true );
-		$payout_notes  = get_user_meta( $user_id, '_wru_payout_notes', true );
-
-		// Query reseller's cashout requests
-		$cashout_posts = get_posts( array(
-			'post_type'      => WRU_Reseller_Manager::CPT_CASHOUT,
-			'post_status'    => array( 'pending', 'publish', 'trash' ),
-			'meta_key'       => '_wru_reseller_id',
-			'meta_value'     => $user_id,
-			'posts_per_page' => 20,
-			'orderby'        => 'date',
-			'order'          => 'DESC',
-		) );
-
-		// Query ledger adjustments
-		$ledger = WRU_Reseller_Manager::get_ledger( $user_id );
+		// Saved brand details
+		$company_name = get_user_meta( $user_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $user_id, 'billing_company', true );
 
 		// Query reseller's orders
 		$orders = wc_get_orders( array(
@@ -236,7 +254,7 @@ class WRU_Reseller_Dashboard {
 			<div class="wru-dashboard-header">
 				<div class="wru-user-welcome">
 					<h2><?php printf( esc_html__( 'স্বাগতম, %s!', 'woocommerce-resell-utility' ), esc_html( ! empty( $company_name ) ? $company_name . ' (' . $user->display_name . ')' : $user->display_name ) ); ?></h2>
-					<p><?php esc_html_e( 'আপনার ড্রপশিপিং রিসেলিং আয়, ব্যালেন্স, ক্যাশআউট এবং অর্ডার স্টেটমেন্ট এখানে ট্র্যাক করুন।', 'woocommerce-resell-utility' ); ?></p>
+					<p><?php esc_html_e( 'আপনার ড্রপশিপিং রিসেলিং আয়, ব্যালেন্স, এবং অর্ডার স্টেটমেন্ট এখানে ট্র্যাক করুন।', 'woocommerce-resell-utility' ); ?></p>
 				</div>
 				<span class="wru-status-pill"><?php esc_html_e( 'অনুমোদিত রিসেলার পার্টনার', 'woocommerce-resell-utility' ); ?></span>
 			</div>
@@ -257,13 +275,9 @@ class WRU_Reseller_Dashboard {
 							<small style="color: #dc2626; font-size: 11px; font-weight:700; display:block;"><?php esc_html_e( '(বকেয়া ঋণাত্মক ব্যালেন্স)', 'woocommerce-resell-utility' ); ?></small>
 						<?php endif; ?>
 						<div style="margin-top: 8px;">
-							<?php if ( $available_balance > 0 ) : ?>
-								<a href="#wru-cashout-section" class="button button-small wru-cashout-trigger-btn" style="background:#16a34a; color:#fff; border-radius:6px; font-weight:700; padding:4px 12px; border:none; text-decoration:none; display:inline-block;">
-									<?php esc_html_e( 'টাকা ক্যাশআউট করুন', 'woocommerce-resell-utility' ); ?>
-								</a>
-							<?php else : ?>
-								<span style="color:#94a3b8; font-size:12px; font-style:italic;"><?php esc_html_e( 'ক্যাশআউট অনুপলব্ধ', 'woocommerce-resell-utility' ); ?></span>
-							<?php endif; ?>
+							<a href="<?php echo esc_url( wc_get_account_endpoint_url( self::ENDPOINT_PAYOUTS ) ); ?>" class="button button-small" style="background:#16a34a; color:#fff; border-radius:6px; font-weight:700; padding:4px 12px; border:none; text-decoration:none; display:inline-block;">
+								<?php esc_html_e( 'Reseller Cash & Payouts', 'woocommerce-resell-utility' ); ?> &rarr;
+							</a>
 						</div>
 					</div>
 				</div>
@@ -301,6 +315,195 @@ class WRU_Reseller_Dashboard {
 						<span class="wru-stat-title"><?php esc_html_e( 'সর্বমোট অর্জিত নিট লাভ', 'woocommerce-resell-utility' ); ?></span>
 						<strong class="wru-stat-number"><?php echo wc_price( $total_earned ); ?></strong>
 						<small style="color: #64748b; font-size: 11px;"><?php esc_html_e( 'ডেলিভারি সম্পন্ন অর্ডার ও বোনাস', 'woocommerce-resell-utility' ); ?></small>
+					</div>
+				</div>
+			</div>
+
+			<!-- Reseller Orders Table (Placed immediately below Balance/KPIs) -->
+			<div class="wru-orders-section" style="margin-top: 28px;">
+				<h3><?php esc_html_e( 'রিসেলিং অর্ডার হিস্ট্রি ও লাভ-লোকসান তালিকা', 'woocommerce-resell-utility' ); ?></h3>
+				<?php if ( empty( $resell_orders ) ) : ?>
+					<div class="wru-empty-state">
+						<p><?php esc_html_e( 'আপনার কোনো রিসেলিং অর্ডার এখনও পাওয়া যায়নি। প্রোডাক্ট পেজ থেকে আপনার বিক্রয়মূল্য লিখে এখনই অর্ডার করুন!', 'woocommerce-resell-utility' ); ?></p>
+					</div>
+				<?php else : ?>
+					<div class="wru-table-responsive">
+						<table class="wru-orders-table">
+							<thead>
+								<tr>
+									<th><?php esc_html_e( 'অর্ডার #', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'তারিখ', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'কুরিয়ার কালেকশন', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'পাইকারি খরচ', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'প্যাকেজিং ফি', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'শিপিং ফি', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'আপনার নিট লাভ', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'স্ট্যাটাস', 'woocommerce-resell-utility' ); ?></th>
+									<th><?php esc_html_e( 'অ্যাকশন', 'woocommerce-resell-utility' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php foreach ( $resell_orders as $resell_order ) : 
+									$order_id     = $resell_order->get_id();
+									$collection   = (float) $resell_order->get_meta( '_wru_total_collection_amount' );
+									$wholesale    = (float) $resell_order->get_meta( '_wru_total_wholesale_amount' );
+									$packaging    = (float) $resell_order->get_meta( '_wru_total_packaging_fee' );
+									$shipping_fee = (float) $resell_order->get_shipping_total() + (float) $resell_order->get_shipping_tax();
+									if ( $shipping_fee <= 0 ) {
+										$shipping_fee = (float) $resell_order->get_meta( '_wru_shipping_charge' );
+									}
+									$profit       = (float) $resell_order->get_meta( '_wru_total_reseller_profit' );
+								?>
+									<tr>
+										<td><strong>#<?php echo esc_html( $order_id ); ?></strong></td>
+										<td><?php echo esc_html( wc_format_datetime( $resell_order->get_date_created() ) ); ?></td>
+										<td><?php echo wc_price( $collection ); ?></td>
+										<td><?php echo wc_price( $wholesale ); ?></td>
+										<td><?php echo wc_price( $packaging ); ?></td>
+										<td><?php echo wc_price( $shipping_fee ); ?></td>
+										<td class="wru-profit-td">
+											<?php
+											$order_status = $resell_order->get_status();
+											if ( 'completed' === $order_status ) {
+												echo '<strong style="color: #16a34a;">+' . wc_price( $profit ) . '</strong>';
+											} elseif ( in_array( $order_status, array( 'processing', 'on-hold', 'pending', 'packed', 'shipped' ), true ) ) {
+												echo '<strong style="color: #d97706;">' . wc_price( $profit ) . '</strong><br><small style="color:#64748b; font-size:11px;">(' . esc_html__( 'পেন্ডিং', 'woocommerce-resell-utility' ) . ')</small>';
+											} elseif ( in_array( $order_status, array( 'cancelled', 'failed', 'refunded' ), true ) ) {
+												$breakdown  = WRU_Order_Manager::get_order_cancellation_breakdown( $resell_order );
+												$order_loss = $breakdown['total_loss'];
+												if ( $order_loss > 0 ) {
+													echo '<strong style="color: #dc2626;">-' . wc_price( $order_loss ) . '</strong><br><small style="color:#dc2626; font-size:11px;">(' . esc_html( $breakdown['reason'] ) . ')</small>';
+												} else {
+													echo '<strong style="color: #64748b;">' . wc_price( 0 ) . '</strong><br><small style="color:#64748b; font-size:11px;">(' . esc_html( $breakdown['reason'] ) . ')</small>';
+												}
+											} else {
+												echo wc_price( $profit );
+											}
+											?>
+										</td>
+										<td>
+											<span class="wru-status-badge wru-status-<?php echo esc_attr( $resell_order->get_status() ); ?>">
+												<?php echo esc_html( wc_get_order_status_name( $resell_order->get_status() ) ); ?>
+											</span>
+										</td>
+										<td>
+											<div style="display:flex; flex-direction:column; gap:4px;">
+												<a href="<?php echo esc_url( $resell_order->get_view_order_url() ); ?>" class="button wru-view-order-btn" style="text-align:center;">
+													<?php esc_html_e( 'ভিউ', 'woocommerce-resell-utility' ); ?>
+												</a>
+												<?php if ( in_array( $order_status, array( 'pending', 'on-hold', 'processing', 'packed' ), true ) ) : ?>
+													<form method="post" action="" onsubmit="return confirm('<?php echo 'packed' === $order_status ? sprintf( esc_attr__( 'সতর্কতা: এই অর্ডারটি ইতিমধ্যে প্যাক করা হয়ে গেছে। এখন বাতিল করলে আপনার একাউন্ট হতে প্যাকেজিং ফি (%s) কর্তন করা হবে। আপনি কি নিশ্চিত?', 'woocommerce-resell-utility' ), wc_price( $packaging ) ) : esc_attr__( 'আপনি কি নিশ্চিত যে এই অর্ডারটি বাতিল করতে চান? এটি এখনও প্যাক করা হয়নি, তাই কোনো ফি কর্তন হবে না।', 'woocommerce-resell-utility' ); ?>');">
+														<?php wp_nonce_field( 'wru_reseller_cancel_order', 'wru_cancel_nonce' ); ?>
+														<input type="hidden" name="wru_cancel_order_action" value="1" />
+														<input type="hidden" name="order_id" value="<?php echo esc_attr( $order_id ); ?>" />
+														<button type="submit" class="button wru-cancel-order-btn" style="background:#fef2f2; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; font-size:11px; padding:3px 6px; cursor:pointer; width:100%; text-align:center;">
+															<?php esc_html_e( 'বাতিল করুন', 'woocommerce-resell-utility' ); ?>
+														</button>
+													</form>
+												<?php endif; ?>
+											</div>
+										</td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+				<?php endif; ?>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render the Reseller Payouts page content.
+	 */
+	public function render_payouts_content() {
+		if ( ! is_user_logged_in() ) {
+			echo '<p>' . esc_html__( 'ক্যাশ ও পেআউট তথ্য দেখতে দয়া করে লগইন করুন।', 'woocommerce-resell-utility' ) . '</p>';
+			return;
+		}
+
+		$user_id = get_current_user_id();
+		$user    = get_userdata( $user_id );
+
+		// Only users with 'wru_reseller' role or store managers/admins can view payouts hub
+		if ( ! user_can( $user_id, WRU_Reseller_Manager::ROLE_RESELLER ) && ! user_can( $user_id, 'manage_woocommerce' ) ) {
+			?>
+			<div class="wru-dashboard-wrap">
+				<div class="wru-notice-restricted" style="background:#ffffff; border:1.5px solid #cbd5e1; border-radius:12px; padding:36px; text-align:center;">
+					<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:1.35rem;"><?php esc_html_e( 'শুধুমাত্র অনুমোদিত রিসেলারদের জন্য', 'woocommerce-resell-utility' ); ?></h3>
+					<p style="color:#64748b; font-size:0.95rem; max-width:480px; margin:0 auto 16px; line-height:1.6;">
+						<?php esc_html_e( 'এই পেআউট হাবটি শুধুমাত্র আমাদের নিবন্ধিত রিসেলার পার্টনারদের জন্য।', 'woocommerce-resell-utility' ); ?>
+					</p>
+				</div>
+			</div>
+			<?php
+			return;
+		}
+
+		// Calculate comprehensive balance data via manager
+		$balance_data       = WRU_Reseller_Manager::get_reseller_balance_data( $user_id );
+		$available_balance  = $balance_data['available_balance'];
+		$pending_cashouts   = $balance_data['pending_cashouts'];
+		$completed_cashouts = $balance_data['completed_cashouts'];
+		$total_earned       = $balance_data['total_earned'];
+
+		// Saved payout & brand details
+		$company_name  = get_user_meta( $user_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $user_id, 'billing_company', true );
+		$reseller_phone= get_user_meta( $user_id, '_wru_reseller_phone', true );
+		$payout_method = get_user_meta( $user_id, '_wru_payout_method', true );
+		$payout_number = get_user_meta( $user_id, '_wru_payout_number', true );
+		$payout_notes  = get_user_meta( $user_id, '_wru_payout_notes', true );
+
+		// Query reseller's cashout requests
+		$cashout_posts = get_posts( array(
+			'post_type'      => WRU_Reseller_Manager::CPT_CASHOUT,
+			'post_status'    => array( 'pending', 'publish', 'trash' ),
+			'meta_key'       => '_wru_reseller_id',
+			'meta_value'     => $user_id,
+			'posts_per_page' => 50,
+			'orderby'        => 'date',
+			'order'          => 'DESC',
+		) );
+
+		// Query ledger adjustments
+		$ledger = WRU_Reseller_Manager::get_ledger( $user_id );
+		?>
+		<div class="wru-dashboard-wrap">
+			<!-- Header Banner -->
+			<div class="wru-dashboard-header">
+				<div class="wru-user-welcome">
+					<h2><?php esc_html_e( 'রিসেলার ক্যাশ ও পেআউট হাব', 'woocommerce-resell-utility' ); ?></h2>
+					<p><?php esc_html_e( 'আপনার উত্তোলনযোগ্য ব্যালেন্স থেকে টাকা উত্তোলনের রিকোয়েস্ট পাঠান এবং সমস্ত লেনদেন হিস্ট্রি ট্র্যাক করুন।', 'woocommerce-resell-utility' ); ?></p>
+				</div>
+				<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 16px; text-align:right;">
+					<span style="font-size:12px; color:#64748b; font-weight:600; display:block;"><?php esc_html_e( 'উত্তোলনযোগ্য ব্যালেন্স:', 'woocommerce-resell-utility' ); ?></span>
+					<strong style="font-size:1.4rem; color: <?php echo $available_balance >= 0 ? '#16a34a' : '#dc2626'; ?>;">
+						<?php echo wc_price( $available_balance ); ?>
+					</strong>
+				</div>
+			</div>
+
+			<!-- Quick Stats Grid -->
+			<div class="wru-stats-grid" style="margin-bottom: 24px;">
+				<div class="wru-stat-card wru-stat-total">
+					<div class="wru-stat-info">
+						<span class="wru-stat-title"><?php esc_html_e( 'উত্তোলনযোগ্য ব্যালেন্স', 'woocommerce-resell-utility' ); ?></span>
+						<strong class="wru-stat-number" style="color: <?php echo $available_balance >= 0 ? '#16a34a' : '#dc2626'; ?>">
+							<?php echo wc_price( $available_balance ); ?>
+						</strong>
+					</div>
+				</div>
+				<div class="wru-stat-card wru-stat-pending">
+					<div class="wru-stat-info">
+						<span class="wru-stat-title"><?php esc_html_e( 'পেন্ডিং ক্যাশআউট', 'woocommerce-resell-utility' ); ?></span>
+						<strong class="wru-stat-number" style="color:#d97706;"><?php echo wc_price( $pending_cashouts ); ?></strong>
+					</div>
+				</div>
+				<div class="wru-stat-card wru-stat-completed">
+					<div class="wru-stat-info">
+						<span class="wru-stat-title"><?php esc_html_e( 'মোট পরিশোধিত', 'woocommerce-resell-utility' ); ?></span>
+						<strong class="wru-stat-number" style="color:#0284c7;"><?php echo wc_price( $completed_cashouts ); ?></strong>
 					</div>
 				</div>
 			</div>
@@ -517,98 +720,6 @@ class WRU_Reseller_Dashboard {
 						<?php esc_html_e( 'পেআউট তথ্য সংরক্ষণ করুন', 'woocommerce-resell-utility' ); ?>
 					</button>
 				</form>
-			</div>
-
-			<!-- Reseller Orders Table -->
-			<div class="wru-orders-section">
-				<h3><?php esc_html_e( 'রিসেলিং অর্ডার হিস্ট্রি ও লাভ-লোকসান তালিকা', 'woocommerce-resell-utility' ); ?></h3>
-				<?php if ( empty( $resell_orders ) ) : ?>
-					<div class="wru-empty-state">
-						<p><?php esc_html_e( 'আপনার কোনো রিসেলিং অর্ডার এখনও পাওয়া যায়নি। প্রোডাক্ট পেজ থেকে আপনার বিক্রয়মূল্য লিখে এখনই অর্ডার করুন!', 'woocommerce-resell-utility' ); ?></p>
-					</div>
-				<?php else : ?>
-					<div class="wru-table-responsive">
-						<table class="wru-orders-table">
-							<thead>
-								<tr>
-									<th><?php esc_html_e( 'অর্ডার #', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'তারিখ', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'কুরিয়ার কালেকশন', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'পাইকারি খরচ', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'প্যাকেজিং ফি', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'শিপিং ফি', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'আপনার নিট লাভ', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'স্ট্যাটাস', 'woocommerce-resell-utility' ); ?></th>
-									<th><?php esc_html_e( 'অ্যাকশন', 'woocommerce-resell-utility' ); ?></th>
-								</tr>
-							</thead>
-							<tbody>
-								<?php foreach ( $resell_orders as $resell_order ) : 
-									$order_id     = $resell_order->get_id();
-									$collection   = (float) $resell_order->get_meta( '_wru_total_collection_amount' );
-									$wholesale    = (float) $resell_order->get_meta( '_wru_total_wholesale_amount' );
-									$packaging    = (float) $resell_order->get_meta( '_wru_total_packaging_fee' );
-									$shipping_fee = (float) $resell_order->get_shipping_total() + (float) $resell_order->get_shipping_tax();
-									if ( $shipping_fee <= 0 ) {
-										$shipping_fee = (float) $resell_order->get_meta( '_wru_shipping_charge' );
-									}
-									$profit       = (float) $resell_order->get_meta( '_wru_total_reseller_profit' );
-								?>
-									<tr>
-										<td><strong>#<?php echo esc_html( $order_id ); ?></strong></td>
-										<td><?php echo esc_html( wc_format_datetime( $resell_order->get_date_created() ) ); ?></td>
-										<td><?php echo wc_price( $collection ); ?></td>
-										<td><?php echo wc_price( $wholesale ); ?></td>
-										<td><?php echo wc_price( $packaging ); ?></td>
-										<td><?php echo wc_price( $shipping_fee ); ?></td>
-										<td class="wru-profit-td">
-											<?php
-											$order_status = $resell_order->get_status();
-											if ( 'completed' === $order_status ) {
-												echo '<strong style="color: #16a34a;">+' . wc_price( $profit ) . '</strong>';
-											} elseif ( in_array( $order_status, array( 'processing', 'on-hold', 'pending', 'packed', 'shipped' ), true ) ) {
-												echo '<strong style="color: #d97706;">' . wc_price( $profit ) . '</strong><br><small style="color:#64748b; font-size:11px;">(' . esc_html__( 'পেন্ডিং', 'woocommerce-resell-utility' ) . ')</small>';
-											} elseif ( in_array( $order_status, array( 'cancelled', 'failed', 'refunded' ), true ) ) {
-												$breakdown  = WRU_Order_Manager::get_order_cancellation_breakdown( $resell_order );
-												$order_loss = $breakdown['total_loss'];
-												if ( $order_loss > 0 ) {
-													echo '<strong style="color: #dc2626;">-' . wc_price( $order_loss ) . '</strong><br><small style="color:#dc2626; font-size:11px;">(' . esc_html( $breakdown['reason'] ) . ')</small>';
-												} else {
-													echo '<strong style="color: #64748b;">' . wc_price( 0 ) . '</strong><br><small style="color:#64748b; font-size:11px;">(' . esc_html( $breakdown['reason'] ) . ')</small>';
-												}
-											} else {
-												echo wc_price( $profit );
-											}
-											?>
-										</td>
-										<td>
-											<span class="wru-status-badge wru-status-<?php echo esc_attr( $resell_order->get_status() ); ?>">
-												<?php echo esc_html( wc_get_order_status_name( $resell_order->get_status() ) ); ?>
-											</span>
-										</td>
-										<td>
-											<div style="display:flex; flex-direction:column; gap:4px;">
-												<a href="<?php echo esc_url( $resell_order->get_view_order_url() ); ?>" class="button wru-view-order-btn" style="text-align:center;">
-													<?php esc_html_e( 'ভিউ', 'woocommerce-resell-utility' ); ?>
-												</a>
-												<?php if ( in_array( $order_status, array( 'pending', 'on-hold', 'processing', 'packed' ), true ) ) : ?>
-													<form method="post" action="" onsubmit="return confirm('<?php echo 'packed' === $order_status ? sprintf( esc_attr__( 'সতর্কতা: এই অর্ডারটি ইতিমধ্যে প্যাক করা হয়ে গেছে। এখন বাতিল করলে আপনার একাউন্ট হতে প্যাকেজিং ফি (%s) কর্তন করা হবে। আপনি কি নিশ্চিত?', 'woocommerce-resell-utility' ), wc_price( $packaging ) ) : esc_attr__( 'আপনি কি নিশ্চিত যে এই অর্ডারটি বাতিল করতে চান? এটি এখনও প্যাক করা হয়নি, তাই কোনো ফি কর্তন হবে না।', 'woocommerce-resell-utility' ); ?>');">
-														<?php wp_nonce_field( 'wru_reseller_cancel_order', 'wru_cancel_nonce' ); ?>
-														<input type="hidden" name="wru_cancel_order_action" value="1" />
-														<input type="hidden" name="order_id" value="<?php echo esc_attr( $order_id ); ?>" />
-														<button type="submit" class="button wru-cancel-order-btn" style="background:#fef2f2; color:#dc2626; border:1px solid #fca5a5; border-radius:4px; font-size:11px; padding:3px 6px; cursor:pointer; width:100%; text-align:center;">
-															<?php esc_html_e( 'বাতিল করুন', 'woocommerce-resell-utility' ); ?>
-														</button>
-													</form>
-												<?php endif; ?>
-											</div>
-										</td>
-									</tr>
-								<?php endforeach; ?>
-							</tbody>
-						</table>
-					</div>
-				<?php endif; ?>
 			</div>
 		</div>
 		<?php

@@ -40,6 +40,53 @@ class WRU_Product_Fields {
 		// Product edit screen fields (General tab).
 		add_action( 'woocommerce_product_options_pricing', array( $this, 'render_product_resell_fields' ) );
 		add_action( 'woocommerce_process_product_meta', array( $this, 'save_product_resell_fields' ) );
+
+		// Filter display labels on product edit dashboard: Regular price -> Market price, Sale price -> Resell price.
+		add_filter( 'gettext', array( $this, 'filter_product_price_labels' ), 99, 3 );
+		add_filter( 'gettext_with_context', array( $this, 'filter_product_price_labels_context' ), 99, 4 );
+	}
+
+	/**
+	 * Filter WooCommerce gettext labels on product edit dashboard:
+	 * Regular price -> Market price, Sale price -> Resell price.
+	 *
+	 * @param string $translation Translated text.
+	 * @param string $text        Original text.
+	 * @param string $domain      Text domain.
+	 * @return string
+	 */
+	public function filter_product_price_labels( $translation, $text, $domain ) {
+		if ( 'woocommerce' === $domain && is_admin() ) {
+			if ( 'Regular price' === $text || 'Regular Price' === $text ) {
+				return __( 'Market price', 'woocommerce-resell-utility' );
+			}
+			if ( 'Sale price' === $text || 'Sale Price' === $text ) {
+				return __( 'Resell price', 'woocommerce-resell-utility' );
+			}
+			if ( 'Regular price (%s)' === $text || 'Regular Price (%s)' === $text ) {
+				return __( 'Market price (%s)', 'woocommerce-resell-utility' );
+			}
+			if ( 'Sale price (%s)' === $text || 'Sale Price (%s)' === $text ) {
+				return __( 'Resell price (%s)', 'woocommerce-resell-utility' );
+			}
+			if ( 'Variation price (required)' === $text ) {
+				return __( 'Market price (required)', 'woocommerce-resell-utility' );
+			}
+		}
+		return $translation;
+	}
+
+	/**
+	 * Filter WooCommerce gettext_with_context labels.
+	 *
+	 * @param string $translation Translated text.
+	 * @param string $text        Original text.
+	 * @param string $context     Context information.
+	 * @param string $domain      Text domain.
+	 * @return string
+	 */
+	public function filter_product_price_labels_context( $translation, $text, $context, $domain ) {
+		return $this->filter_product_price_labels( $translation, $text, $domain );
 	}
 
 	/**
