@@ -66,6 +66,7 @@ class WRU_Admin_Settings {
 
 		wp_localize_script( 'wru-admin-scripts', 'wru_admin', array(
 			'ajax_url'    => admin_url( 'admin-ajax.php' ),
+			'nonce'       => wp_create_nonce( 'wru_admin_nonce' ),
 			'copied_text' => __( 'কুরিয়ার নোট কপি হয়েছে!', 'woocommerce-resell-utility' ),
 		) );
 	}

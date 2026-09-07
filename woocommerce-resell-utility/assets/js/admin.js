@@ -179,11 +179,69 @@
 			$('#wru-delete-applicant-modal').fadeIn(200);
 		});
 
-		// 8. View Reseller Profile & NID Modal
-		$(document).on('click', '.wru-btn-view-reseller', function(e) {
+		// 8. View Reseller Profile & NID Modal (Clicking Reseller Name, Card, or Button)
+		$(document).on('click', '.wru-btn-view-reseller, .wru-clickable-reseller', function(e) {
 			e.preventDefault();
-			var userData = $(this).data('user-json');
+			var $btn = $(this);
+			var userId = $btn.data('user-id') || $btn.closest('[data-user-id]').data('user-id') || $btn.attr('data-user-id');
 
+			// Fallback: Check inline JSON
+			var inlineData = $btn.data('user-json') || $btn.attr('data-user-json');
+			if (!userId && inlineData) {
+				if (typeof inlineData === 'string') {
+					try { inlineData = JSON.parse(inlineData); } catch (err) { inlineData = null; }
+				}
+				if (inlineData && inlineData.id) {
+					userId = inlineData.id;
+				}
+			}
+
+			if (!userId && (!inlineData || typeof inlineData !== 'object')) {
+				return;
+			}
+
+			// Show modal immediately with loading indicator
+			$('#wru-view-reseller-modal .wru-modal-header h3').text('রিসেলার প্রোফাইল ও NID (ID: #' + (userId || '') + ')');
+			$('#wru_view_profile_pdf_holder').empty();
+			$('#wru_view_profile_body').html(
+				'<div style="text-align:center; padding:50px 20px; color:#475569;">' +
+				'  <div style="font-size:16px; font-weight:700; margin-bottom:8px; color:#0f172a;">তথ্য ও NID লোড হচ্ছে...</div>' +
+				'  <p style="margin:0; font-size:13px; color:#64748b;">অনুগ্রহ করে অপেক্ষা করুন</p>' +
+				'</div>'
+			);
+			$('#wru-view-reseller-modal').fadeIn(200);
+
+			var ajaxUrl = (typeof wru_admin !== 'undefined' && wru_admin.ajax_url) ? wru_admin.ajax_url : (window.ajaxurl || '/wp-admin/admin-ajax.php');
+			var nonce = (typeof wru_admin !== 'undefined' && wru_admin.nonce) ? wru_admin.nonce : '';
+
+			$.ajax({
+				url: ajaxUrl,
+				type: 'GET',
+				data: {
+					action: 'wru_get_reseller_profile',
+					user_id: userId,
+					_ajax_nonce: nonce
+				},
+				dataType: 'json',
+				success: function(resp) {
+					if (!resp || !resp.success || !resp.data) {
+						var errMsg = (resp && resp.data && resp.data.message) ? resp.data.message : 'ডাটা লোড করা সম্ভব হয়নি।';
+						$('#wru_view_profile_body').html('<div style="padding:30px; text-align:center; color:#dc2626; font-size:14px;">' + errMsg + '</div>');
+						return;
+					}
+					renderResellerProfileModal(resp.data);
+				},
+				error: function() {
+					if (inlineData && typeof inlineData === 'object' && inlineData.name) {
+						renderResellerProfileModal(inlineData);
+					} else {
+						$('#wru_view_profile_body').html('<div style="padding:30px; text-align:center; color:#dc2626; font-size:14px;">সার্ভার সংযোগে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।</div>');
+					}
+				}
+			});
+		});
+
+		function renderResellerProfileModal(userData) {
 			if (!userData) {
 				return;
 			}
@@ -209,10 +267,10 @@
 			// Format Dossier HTML
 			var html = '';
 			html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">';
-			
+
 			// Column 1: Personal & Store Info
 			html += '  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">';
-			html += '    <h4 style="margin:0 0 12px 0; color:#0f172a; font-size:13.5px; border-bottom:1.5px solid #e2e8f0; padding-bottom:6px;">👤 ব্যক্তিগত ও যোগাযোগের তথ্য</h4>';
+			html += '    <h4 style="margin:0 0 12px 0; color:#0f172a; font-size:13.5px; border-bottom:1.5px solid #e2e8f0; padding-bottom:6px;">ব্যক্তিগত ও যোগাযোগের তথ্য</h4>';
 			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>পূর্ণ নাম:</strong> ' + $('<div>').text(userData.name || '').html() + '</p>';
 			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>ইউজারনেম:</strong> <code>' + $('<div>').text(userData.username || '').html() + '</code></p>';
 			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>ইমেইল:</strong> <a href="mailto:' + encodeURI(userData.email || '') + '" style="color:#0284c7;">' + $('<div>').text(userData.email || '').html() + '</a></p>';
@@ -226,7 +284,7 @@
 
 			// Column 2: Financial & Payout Info
 			html += '  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">';
-			html += '    <h4 style="margin:0 0 12px 0; color:#0f172a; font-size:13.5px; border-bottom:1.5px solid #e2e8f0; padding-bottom:6px;">💼 আর্থিক বিবরণী ও পেআউট</h4>';
+			html += '    <h4 style="margin:0 0 12px 0; color:#0f172a; font-size:13.5px; border-bottom:1.5px solid #e2e8f0; padding-bottom:6px;">আর্থিক বিবরণী ও পেআউট</h4>';
 			var balanceColor = (userData.raw_balance && userData.raw_balance < 0) ? '#dc2626' : '#16a34a';
 			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>উত্তোলনযোগ্য ব্যালেন্স:</strong> <strong style="font-size:15px; color:' + balanceColor + ';">' + (userData.balance || '৳0.00') + '</strong></p>';
 			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>মোট অর্জিত লাভ:</strong> <strong style="color:#16a34a;">' + (userData.earned || '৳0.00') + '</strong></p>';
@@ -241,7 +299,7 @@
 			// NID Section
 			html += '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">';
 			html += '  <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #e2e8f0; padding-bottom:8px; margin-bottom:14px;">';
-			html += '    <h4 style="margin:0; color:#0f172a; font-size:14px; font-weight:700;">🪪 জাতীয় পরিচয়পত্র (National ID Card Documents)</h4>';
+			html += '    <h4 style="margin:0; color:#0f172a; font-size:14px; font-weight:700;">জাতীয় পরিচয়পত্র (National ID Card Documents)</h4>';
 			if (userData.nid_front || userData.nid_back) {
 				html += '    <span style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; border-radius:4px; padding:2px 8px; font-size:11px; font-weight:700;">NID ভেরিফাইড আপলোড</span>';
 			} else {
@@ -256,7 +314,7 @@
 			if (userData.nid_front) {
 				if (/\.(pdf)$/i.test(userData.nid_front)) {
 					html += '      <div style="padding:24px 10px;">';
-					html += '        <span style="font-size:36px; display:block; margin-bottom:8px;">📄</span>';
+					html += '        <p style="margin-bottom:12px; font-weight:600; color:#475569;">PDF ফরম্যাট ডকুমেন্ট</p>';
 					html += '        <a href="' + encodeURI(userData.nid_front) + '" target="_blank" class="button button-primary" style="font-size:12px;">PDF ডকুমেন্ট দেখুন / ডাউনলোড</a>';
 					html += '      </div>';
 				} else {
@@ -266,13 +324,12 @@
 					html += '        </a>';
 					html += '      </div>';
 					html += '      <div style="display:flex; gap:8px; justify-content:center;">';
-					html += '        <a href="' + encodeURI(userData.nid_front) + '" target="_blank" class="button button-small" style="font-size:11.5px;">🔍 বড় করে দেখুন</a>';
-					html += '        <a href="' + encodeURI(userData.nid_front) + '" download class="button button-small" style="font-size:11.5px;">📥 ডাউনলোড</a>';
+					html += '        <a href="' + encodeURI(userData.nid_front) + '" target="_blank" class="button button-small" style="font-size:11.5px;">বড় করে দেখুন</a>';
+					html += '        <a href="' + encodeURI(userData.nid_front) + '" download class="button button-small" style="font-size:11.5px;">ডাউনলোড</a>';
 					html += '      </div>';
 				}
 			} else {
 				html += '      <div style="padding:30px 10px; color:#94a3b8; font-size:12.5px; font-style:italic;">';
-				html += '        <span style="font-size:28px; display:block; margin-bottom:6px;">⚠️</span>';
 				html += '        কোনো NID সামনের ছবি আপলোড করা নেই';
 				html += '      </div>';
 			}
@@ -284,7 +341,7 @@
 			if (userData.nid_back) {
 				if (/\.(pdf)$/i.test(userData.nid_back)) {
 					html += '      <div style="padding:24px 10px;">';
-					html += '        <span style="font-size:36px; display:block; margin-bottom:8px;">📄</span>';
+					html += '        <p style="margin-bottom:12px; font-weight:600; color:#475569;">PDF ফরম্যাট ডকুমেন্ট</p>';
 					html += '        <a href="' + encodeURI(userData.nid_back) + '" target="_blank" class="button button-primary" style="font-size:12px;">PDF ডকুমেন্ট দেখুন / ডাউনলোড</a>';
 					html += '      </div>';
 				} else {
@@ -294,13 +351,12 @@
 					html += '        </a>';
 					html += '      </div>';
 					html += '      <div style="display:flex; gap:8px; justify-content:center;">';
-					html += '        <a href="' + encodeURI(userData.nid_back) + '" target="_blank" class="button button-small" style="font-size:11.5px;">🔍 বড় করে দেখুন</a>';
-					html += '        <a href="' + encodeURI(userData.nid_back) + '" download class="button button-small" style="font-size:11.5px;">📥 ডাউনলোড</a>';
+					html += '        <a href="' + encodeURI(userData.nid_back) + '" target="_blank" class="button button-small" style="font-size:11.5px;">বড় করে দেখুন</a>';
+					html += '        <a href="' + encodeURI(userData.nid_back) + '" download class="button button-small" style="font-size:11.5px;">ডাউনলোড</a>';
 					html += '      </div>';
 				}
 			} else {
 				html += '      <div style="padding:30px 10px; color:#94a3b8; font-size:12.5px; font-style:italic;">';
-				html += '        <span style="font-size:28px; display:block; margin-bottom:6px;">⚠️</span>';
 				html += '        কোনো NID পেছনের ছবি আপলোড করা নেই';
 				html += '      </div>';
 			}
@@ -313,13 +369,13 @@
 
 			// PDF Export button in footer
 			if (userData.pdf_url) {
-				$('#wru_view_profile_pdf_holder').html('<a href="' + userData.pdf_url + '" target="_blank" class="button button-primary" style="background:#0284c7; border-color:#0369a1; color:#fff; font-weight:700; padding:4px 14px; font-size:13px; display:inline-flex; align-items:center; gap:5px;">📄 এক ক্লিকে সম্পূর্ণ PDF এক্সপোর্ট (NID সহ)</a>');
+				$('#wru_view_profile_pdf_holder').html('<a href="' + userData.pdf_url + '" target="_blank" class="button button-primary" style="background:#0284c7; border-color:#0369a1; color:#fff; font-weight:700; padding:4px 14px; font-size:13px; display:inline-flex; align-items:center; gap:5px;">এক ক্লিকে সম্পূর্ণ PDF এক্সপোর্ট (NID সহ)</a>');
 			} else {
 				$('#wru_view_profile_pdf_holder').empty();
 			}
 
 			$('#wru-view-reseller-modal').fadeIn(200);
-		});
+		}
 
 
 		/* ==========================================================================

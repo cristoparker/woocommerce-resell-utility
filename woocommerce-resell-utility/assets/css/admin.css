@@ -316,6 +316,7 @@ mark.order-status.status-wc-shipped {
 
 /* Clickable Reseller Identity Card in Admin List */
 .wru-clickable-reseller {
+	cursor: pointer !important;
 	transition: all 0.18s ease-in-out;
 }
 

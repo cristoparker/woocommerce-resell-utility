@@ -114,6 +114,7 @@ class WRU_Reseller_Manager {
 
 		// AJAX for ledger modal.
 		add_action( 'wp_ajax_wru_get_reseller_ledger', array( $this, 'ajax_get_reseller_ledger' ) );
+		add_action( 'wp_ajax_wru_get_reseller_profile', array( $this, 'ajax_get_reseller_profile' ) );
 
 		// Frontend cashout request handler.
 		add_action( 'template_redirect', array( $this, 'handle_frontend_cashout_request' ) );
@@ -1312,8 +1313,8 @@ class WRU_Reseller_Manager {
 		</head>
 		<body>
 			<div class="pdf-toolbar">
-				<button type="button" class="btn-print" onclick="window.print();">🖨️ <?php esc_html_e( 'প্রিন্ট / Save as PDF', 'woocommerce-resell-utility' ); ?></button>
-				<button type="button" class="btn-close" onclick="window.close();">✕ <?php esc_html_e( 'বন্ধ করুন', 'woocommerce-resell-utility' ); ?></button>
+				<button type="button" class="btn-print" onclick="window.print();"><?php esc_html_e( 'প্রিন্ট / Save as PDF', 'woocommerce-resell-utility' ); ?></button>
+				<button type="button" class="btn-close" onclick="window.close();"><?php esc_html_e( 'বন্ধ করুন', 'woocommerce-resell-utility' ); ?></button>
 			</div>
 
 			<div class="pdf-container">
@@ -1426,7 +1427,7 @@ class WRU_Reseller_Manager {
 						<h4><?php esc_html_e( 'NID কার্ডের সামনের অংশ (Front)', 'woocommerce-resell-utility' ); ?></h4>
 						<?php if ( ! empty( $nid_front_src ) ) : ?>
 							<?php if ( preg_match( '/\.(pdf)$/i', $nid_front ) ) : ?>
-								<p><a href="<?php echo esc_url( $nid_front ); ?>" target="_blank" class="button">📄 View / Download PDF Document</a></p>
+								<p><a href="<?php echo esc_url( $nid_front ); ?>" target="_blank" class="button"><?php esc_html_e( 'View / Download PDF Document', 'woocommerce-resell-utility' ); ?></a></p>
 							<?php else : ?>
 								<img src="<?php echo esc_attr( $nid_front_src ); ?>" alt="NID Front" style="max-width:100%; max-height:220px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />
 							<?php endif; ?>
@@ -1438,7 +1439,7 @@ class WRU_Reseller_Manager {
 						<h4><?php esc_html_e( 'NID কার্ডের পেছনের অংশ (Back)', 'woocommerce-resell-utility' ); ?></h4>
 						<?php if ( ! empty( $nid_back_src ) ) : ?>
 							<?php if ( preg_match( '/\.(pdf)$/i', $nid_back ) ) : ?>
-								<p><a href="<?php echo esc_url( $nid_back ); ?>" target="_blank" class="button">📄 View / Download PDF Document</a></p>
+								<p><a href="<?php echo esc_url( $nid_back ); ?>" target="_blank" class="button"><?php esc_html_e( 'View / Download PDF Document', 'woocommerce-resell-utility' ); ?></a></p>
 							<?php else : ?>
 								<img src="<?php echo esc_attr( $nid_back_src ); ?>" alt="NID Back" style="max-width:100%; max-height:220px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />
 							<?php endif; ?>
@@ -1543,6 +1544,69 @@ class WRU_Reseller_Manager {
 		<?php
 		$html = ob_get_clean();
 		wp_send_json_success( array( 'html' => $html ) );
+	}
+
+	/**
+	 * AJAX endpoint to return complete reseller profile and NID data for admin modal.
+	 */
+	public function ajax_get_reseller_profile() {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => __( 'অনুমতি নেই।', 'woocommerce-resell-utility' ) ) );
+		}
+
+		$user_id = isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : ( isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0 );
+		if ( ! $user_id ) {
+			wp_send_json_error( array( 'message' => __( 'ইউজার পাওয়া যায়নি।', 'woocommerce-resell-utility' ) ) );
+		}
+
+		$user = get_userdata( $user_id );
+		if ( ! $user ) {
+			wp_send_json_error( array( 'message' => __( 'ব্যবহারকারী ডাটাবেসে নেই।', 'woocommerce-resell-utility' ) ) );
+		}
+
+		$balance_data = self::get_reseller_balance_data( $user_id );
+		$company      = get_user_meta( $user_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $user_id, 'billing_company', true );
+		$phone        = get_user_meta( $user_id, '_wru_reseller_phone', true ) ?: get_user_meta( $user_id, 'billing_phone', true );
+		$wa           = get_user_meta( $user_id, '_wru_reseller_whatsapp', true );
+		$store_url    = get_user_meta( $user_id, '_wru_reseller_store_url', true );
+		$nid_front    = get_user_meta( $user_id, '_wru_nid_front_url', true );
+		$nid_back     = get_user_meta( $user_id, '_wru_nid_back_url', true );
+		$status       = get_user_meta( $user_id, '_wru_reseller_status', true ) ?: ( in_array( self::ROLE_RESELLER, (array) $user->roles, true ) ? 'approved' : 'pending' );
+		$p_method     = get_user_meta( $user_id, '_wru_payout_method', true );
+		$p_number     = get_user_meta( $user_id, '_wru_payout_number', true );
+		$p_notes      = get_user_meta( $user_id, '_wru_payout_notes', true );
+		$applied_at   = get_user_meta( $user_id, '_wru_reseller_applied_at', true ) ?: $user->user_registered;
+		$rej_reason   = get_user_meta( $user_id, '_wru_reseller_rejection_reason', true );
+		$pdf_url      = wp_nonce_url( admin_url( 'admin-post.php?action=wru_export_reseller_pdf&user_id=' . $user_id ), 'wru_export_pdf_' . $user_id );
+
+		$response = array(
+			'id'           => $user_id,
+			'name'         => $user->display_name,
+			'username'     => $user->user_login,
+			'email'        => $user->user_email,
+			'phone'        => (string) $phone,
+			'company'      => (string) $company,
+			'whatsapp'     => (string) $wa,
+			'store_url'    => (string) $store_url,
+			'nid_front'    => (string) $nid_front,
+			'nid_back'     => (string) $nid_back,
+			'registered'   => date_i18n( 'd M Y, h:i A', strtotime( $user->user_registered ) ),
+			'applied_at'   => date_i18n( 'd M Y, h:i A', strtotime( $applied_at ) ),
+			'orders_count' => (int) $balance_data['orders_count'],
+			'completed'    => (int) $balance_data['completed_count'],
+			'earned'       => wc_price( $balance_data['total_earned'] ),
+			'withdrawn'    => wc_price( $balance_data['completed_cashouts'] ),
+			'balance'      => wc_price( $balance_data['available_balance'] ),
+			'raw_balance'  => (float) $balance_data['available_balance'],
+			'status'       => $status,
+			'p_method'     => $p_method ? ucfirst( str_replace( '_', ' ', $p_method ) ) : __( 'সেট করা নেই', 'woocommerce-resell-utility' ),
+			'p_number'     => (string) $p_number,
+			'p_notes'      => (string) $p_notes,
+			'rej_reason'   => (string) $rej_reason,
+			'pdf_url'      => $pdf_url,
+		);
+
+		wp_send_json_success( $response );
 	}
 
 	/**
@@ -1949,35 +2013,10 @@ class WRU_Reseller_Manager {
 							$r_nid_front  = get_user_meta( $uid, '_wru_nid_front_url', true );
 							$r_nid_back   = get_user_meta( $uid, '_wru_nid_back_url', true );
 							$pdf_url      = wp_nonce_url( admin_url( 'admin-post.php?action=wru_export_reseller_pdf&user_id=' . $uid ), 'wru_export_pdf_' . $uid );
-
-							$user_data_for_modal = array(
-								'id'           => $uid,
-								'name'         => $reseller->display_name,
-								'email'        => $reseller->user_email,
-								'username'     => $reseller->user_login,
-								'company'      => $r_company,
-								'phone'        => $r_phone,
-								'whatsapp'     => $r_wa,
-								'store_url'    => $r_store_url,
-								'nid_front'    => $r_nid_front,
-								'nid_back'     => $r_nid_back,
-								'registered'   => date_i18n( 'd M Y, h:i A', strtotime( $reseller->user_registered ) ),
-								'orders_count' => $balance_data['orders_count'],
-								'completed'    => $balance_data['completed_count'],
-								'earned'       => wc_price( $balance_data['total_earned'] ),
-								'withdrawn'    => wc_price( $balance_data['completed_cashouts'] ),
-								'balance'      => wc_price( $balance_data['available_balance'] ),
-								'raw_balance'  => (float) $balance_data['available_balance'],
-								'status'       => get_user_meta( $uid, '_wru_reseller_status', true ) ?: 'approved',
-								'p_method'     => $p_method ? ucfirst( str_replace( '_', ' ', $p_method ) ) : '',
-								'p_number'     => $p_number,
-								'pdf_url'      => $pdf_url,
-							);
-							$user_json_attr = esc_attr( wp_json_encode( $user_data_for_modal ) );
 						?>
 							<tr>
 								<td style="vertical-align:top;">
-									<div class="wru-clickable-reseller wru-btn-view-reseller" data-user-json="<?php echo $user_json_attr; ?>" style="cursor:pointer; padding:8px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#f8fafc; transition:all 0.15s ease-in-out;" title="<?php esc_attr_e( 'ক্লিক করে সম্পূর্ণ প্রোফাইল ও আপলোডকৃত NID দেখুন', 'woocommerce-resell-utility' ); ?>">
+									<div class="wru-clickable-reseller wru-btn-view-reseller" data-user-id="<?php echo esc_attr( $uid ); ?>" style="cursor:pointer; padding:8px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#f8fafc; transition:all 0.15s ease-in-out;" title="<?php esc_attr_e( 'ক্লিক করে সম্পূর্ণ প্রোফাইল ও আপলোডকৃত NID দেখুন', 'woocommerce-resell-utility' ); ?>">
 										<div style="display:flex; align-items:center; gap:8px;">
 											<div style="width:34px; height:34px; border-radius:50%; background:#e0f2fe; color:#0369a1; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:700; flex-shrink:0; border:1px solid #bae6fd;">
 												<?php echo esc_html( mb_substr( $reseller->display_name, 0, 1 ) ); ?>
@@ -1991,16 +2030,16 @@ class WRU_Reseller_Manager {
 										</div>
 										<div style="margin-top:6px; font-size:12px; color:#475569; line-height:1.45;">
 											<?php if ( ! empty( $r_company ) ) : ?>
-												<span style="display:inline-block; background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:1px 6px; font-weight:600; color:#0f172a; margin-bottom:3px; font-size:11px;">🏪 <?php echo esc_html( $r_company ); ?></span><br>
+												<span style="display:inline-block; background:#ffffff; border:1px solid #cbd5e1; border-radius:4px; padding:1px 6px; font-weight:600; color:#0f172a; margin-bottom:3px; font-size:11px;"><?php echo esc_html( $r_company ); ?></span><br>
 											<?php endif; ?>
-											<span style="color:#64748b; font-size:11.5px;">✉️ <?php echo esc_html( $reseller->user_email ); ?></span>
+											<span style="color:#64748b; font-size:11.5px;">Email: <?php echo esc_html( $reseller->user_email ); ?></span>
 											<?php if ( $r_phone ) : ?>
-												<br><span style="color:#64748b; font-size:11.5px;">📞 <?php echo esc_html( $r_phone ); ?></span>
+												<br><span style="color:#64748b; font-size:11.5px;">Phone: <?php echo esc_html( $r_phone ); ?></span>
 											<?php endif; ?>
 											<?php if ( ! empty( $r_nid_front ) || ! empty( $r_nid_back ) ) : ?>
-												<br><span style="display:inline-block; margin-top:4px; background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; border-radius:3px; padding:1px 6px; font-size:10.5px; font-weight:700;">🪪 NID সংযুক্ত</span>
+												<br><span style="display:inline-block; margin-top:4px; background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; border-radius:3px; padding:1px 6px; font-size:10.5px; font-weight:700;">NID সংযুক্ত</span>
 											<?php else : ?>
-												<br><span style="display:inline-block; margin-top:4px; background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:3px; padding:1px 6px; font-size:10.5px;">⚠️ NID নেই</span>
+												<br><span style="display:inline-block; margin-top:4px; background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:3px; padding:1px 6px; font-size:10.5px;">NID নেই</span>
 											<?php endif; ?>
 										</div>
 									</div>
@@ -2035,11 +2074,11 @@ class WRU_Reseller_Manager {
 								</td>
 								<td>
 									<div class="wru-actions-group" style="display:flex; flex-direction:column; gap:5px;">
-										<button type="button" class="button button-small wru-btn-view-reseller" data-user-json="<?php echo $user_json_attr; ?>" style="color:#0f172a; font-weight:700; text-align:center; background:#f8fafc; border-color:#cbd5e1; display:flex; align-items:center; justify-content:center; gap:4px;" title="<?php esc_attr_e( 'প্রোফাইল ও আপলোডকৃত NID কার্ড দেখুন', 'woocommerce-resell-utility' ); ?>">
-											👁️ <?php esc_html_e( 'প্রোফাইল ও NID', 'woocommerce-resell-utility' ); ?>
+										<button type="button" class="button button-small wru-btn-view-reseller" data-user-id="<?php echo esc_attr( $uid ); ?>" style="color:#0f172a; font-weight:700; text-align:center; background:#f8fafc; border-color:#cbd5e1; display:flex; align-items:center; justify-content:center; gap:4px;" title="<?php esc_attr_e( 'প্রোফাইল ও আপলোডকৃত NID কার্ড দেখুন', 'woocommerce-resell-utility' ); ?>">
+											<?php esc_html_e( 'প্রোফাইল ও NID', 'woocommerce-resell-utility' ); ?>
 										</button>
 										<a href="<?php echo esc_url( $pdf_url ); ?>" target="_blank" class="button button-small button-primary wru-btn-export-pdf" style="background:#0284c7; border-color:#0369a1; color:#fff; font-weight:700; text-align:center; display:flex; align-items:center; justify-content:center; gap:5px; text-decoration:none;" title="<?php esc_attr_e( 'এক ক্লিকে রিসেলারের সমস্ত তথ্য ও NID সহ PDF ডাউনলোড করুন', 'woocommerce-resell-utility' ); ?>">
-											📄 <?php esc_html_e( 'এক ক্লিকে PDF', 'woocommerce-resell-utility' ); ?>
+											<?php esc_html_e( 'এক ক্লিকে PDF', 'woocommerce-resell-utility' ); ?>
 										</a>
 										<button type="button" class="button button-small button-primary wru-btn-adjust-balance" 
 											data-user-id="<?php echo esc_attr( $uid ); ?>"
@@ -2378,9 +2417,11 @@ class WRU_Reseller_Manager {
 						?>
 							<tr>
 								<td>
-									<strong><?php echo esc_html( $app->display_name ); ?></strong>
-									<br><span style="color:#64748b; font-size:12px;"><?php echo esc_html( $app->user_email ); ?></span>
-									<br><small style="color:#94a3b8;">User: <?php echo esc_html( $app->user_login ); ?></small>
+									<div class="wru-clickable-reseller wru-btn-view-reseller" data-user-id="<?php echo esc_attr( $uid ); ?>" style="cursor:pointer; padding:6px 8px; border-radius:6px; border:1px solid #e2e8f0; background:#f8fafc; transition:all 0.15s ease-in-out;" title="<?php esc_attr_e( 'ক্লিক করে সম্পূর্ণ প্রোফাইল ও আপলোডকৃত NID দেখুন', 'woocommerce-resell-utility' ); ?>">
+										<strong style="color:#0284c7; font-size:13.5px;"><?php echo esc_html( $app->display_name ); ?> &rarr;</strong>
+										<br><span style="color:#64748b; font-size:12px;"><?php echo esc_html( $app->user_email ); ?></span>
+										<br><small style="color:#94a3b8;">User: <?php echo esc_html( $app->user_login ); ?></small>
+									</div>
 								</td>
 								<td>
 									<?php if ( ! empty( $company ) ) : ?>
@@ -2491,8 +2532,12 @@ class WRU_Reseller_Manager {
 											</form>
 										<?php endif; ?>
 
+										<button type="button" class="button button-small wru-btn-view-reseller" data-user-id="<?php echo esc_attr( $uid ); ?>" style="color:#0f172a; font-weight:600; width:100%; text-align:center; box-sizing:border-box;">
+											<?php esc_html_e( 'প্রোফাইল ও NID', 'woocommerce-resell-utility' ); ?>
+										</button>
+
 										<a href="<?php echo esc_url( $app_pdf_url ); ?>" target="_blank" class="button button-small" style="color:#0284c7; font-weight:600; width:100%; text-align:center; box-sizing:border-box;">
-											<?php esc_html_e( '📄 PDF ডাউনলোড', 'woocommerce-resell-utility' ); ?>
+											<?php esc_html_e( 'PDF ডাউনলোড', 'woocommerce-resell-utility' ); ?>
 										</a>
 
 										<button type="button" class="button button-small button-link-delete wru-btn-delete-applicant" style="color:#dc2626; width:100%; text-align:center;"

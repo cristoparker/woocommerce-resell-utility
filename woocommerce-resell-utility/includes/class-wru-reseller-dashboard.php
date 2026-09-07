@@ -779,7 +779,7 @@ class WRU_Reseller_Dashboard {
 
 					<!-- NID Upload / Update Section -->
 					<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:16px 0;">
-						<h4 style="margin:0 0 10px 0; color:#0f172a; font-size:14px;">🪪 জাতীয় পরিচয়পত্র (NID ডকুমেন্টস আপডেট)</h4>
+						<h4 style="margin:0 0 10px 0; color:#0f172a; font-size:14px;"><?php esc_html_e( 'জাতীয় পরিচয়পত্র (NID ডকুমেন্টস আপডেট)', 'woocommerce-resell-utility' ); ?></h4>
 						<p style="margin:0 0 12px 0; font-size:12.5px; color:#64748b;">
 							<?php esc_html_e( 'আপনার NID কার্ড পরিবর্তন বা নতুন করে আপলোড করতে চাইলে নিচের ফাইল নির্বাচন করুন (JPG, PNG, WEBP বা PDF, সর্বোচ্চ ৫MB):', 'woocommerce-resell-utility' ); ?>
 						</p>

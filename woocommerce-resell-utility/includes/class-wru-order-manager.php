@@ -796,10 +796,8 @@ class WRU_Order_Manager {
 		?>
 		<div class="wru-checkout-courier-collection-box" style="background:#ecfdf5; border:2px solid #10b981; border-radius:10px; padding:15px 18px; margin:16px 0 20px 0; box-shadow:0 1px 3px rgba(16,185,129,0.12);">
 			<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-				<div style="display:flex; align-items:center; gap:10px;">
-					<span style="font-size:24px; line-height:1;">🚚</span>
-					<div>
-						<strong style="display:block; font-size:15px; color:#065f46; font-weight:700;">
+				<div>
+					<strong style="display:block; font-size:15px; color:#065f46; font-weight:700;">
 							<?php esc_html_e( 'কুরিয়ার কালেকশন এমাউন্ট (COD)', 'woocommerce-resell-utility' ); ?>
 						</strong>
 						<small style="display:block; font-size:12px; color:#047857;">
@@ -883,10 +881,8 @@ class WRU_Order_Manager {
 			$login_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : wp_login_url();
 			?>
 			<div class="wru-checkout-restriction-banner" style="background: #fef2f2; border: 1.5px solid #f87171; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
-				<div style="display:flex; align-items:flex-start; gap:12px;">
-					<span style="font-size:24px; line-height:1; flex-shrink:0;">⛔</span>
-					<div>
-						<h4 style="margin: 0 0 6px 0; color: #991b1b; font-size: 16px; font-weight: 700;">
+				<div>
+					<h4 style="margin: 0 0 6px 0; color: #991b1b; font-size: 16px; font-weight: 700;">
 							<?php esc_html_e( 'শুধুমাত্র অনুমোদিত রিসেলারদের জন্য', 'woocommerce-resell-utility' ); ?>
 						</h4>
 						<p style="margin: 0; color: #b91c1c; font-size: 13.5px; line-height: 1.6;">
