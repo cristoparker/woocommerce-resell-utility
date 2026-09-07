@@ -314,3 +314,21 @@ mark.order-status.status-wc-shipped {
 	color: #6d28d9 !important;
 }
 
+/* Clickable Reseller Identity Card in Admin List */
+.wru-clickable-reseller {
+	transition: all 0.18s ease-in-out;
+}
+
+.wru-clickable-reseller:hover {
+	background: #f0f9ff !important;
+	border-color: #7dd3fc !important;
+	box-shadow: 0 2px 6px rgba(2, 132, 199, 0.12);
+	transform: translateY(-1px);
+}
+
+.wru-btn-export-pdf:hover {
+	background: #0369a1 !important;
+	border-color: #0284c7 !important;
+	box-shadow: 0 2px 5px rgba(2, 132, 199, 0.25);
+}
+

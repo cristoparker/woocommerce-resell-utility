@@ -172,6 +172,11 @@ final class WooCommerce_Resell_Utility {
 			'packaging_fee'   => WRU_Settings::get_packaging_fee(),
 			'packaging_type'  => WRU_Settings::get_packaging_type(),
 			'is_min_enforced' => WRU_Settings::is_min_price_enforced() ? 1 : 0,
+			'user_email'      => is_user_logged_in() ? wp_get_current_user()->user_email : '',
+			'is_reseller'     => WRU_Reseller_Manager::is_reseller() ? 1 : 0,
+			'reseller_status' => is_user_logged_in() ? get_user_meta( get_current_user_id(), '_wru_reseller_status', true ) : '',
+			'myaccount_url'   => function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : '',
+			'courier_collection_amount' => class_exists( 'WRU_Order_Manager' ) ? WRU_Order_Manager::get_cart_courier_collection_amount() : 0,
 			'i18n'            => array(
 				'copied'           => __( 'ডেসক্রিপশন কপি হয়েছে!', 'woocommerce-resell-utility' ),
 				'profit_prefix'    => __( 'আপনার আনুমানিক লাভ: ', 'woocommerce-resell-utility' ),

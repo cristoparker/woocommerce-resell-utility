@@ -54,11 +54,25 @@ class WRU_Order_Manager {
 
 		// Localize and customize checkout fields for dropshipping resellers.
 		add_filter( 'woocommerce_checkout_fields', array( $this, 'customize_checkout_fields' ), 999 );
+		add_filter( 'woocommerce_billing_fields', array( $this, 'customize_billing_fields' ), 999 );
+		add_filter( 'woocommerce_shipping_fields', array( $this, 'customize_shipping_fields' ), 999 );
+		add_filter( 'woocommerce_default_address_fields', array( $this, 'customize_default_address_fields' ), 999 );
+		add_filter( 'woocommerce_checkout_posted_data', array( $this, 'filter_checkout_posted_data' ) );
 		add_filter( 'woocommerce_checkout_get_value', array( $this, 'filter_reseller_checkout_field_values' ), 10, 2 );
 		add_action( 'woocommerce_before_checkout_form', array( $this, 'render_checkout_banner' ), 5 );
+		add_filter( 'woocommerce_enable_order_notes_field', '__return_false', 999 );
+		add_filter( 'woocommerce_cart_needs_shipping_address', '__return_false', 999 );
 
-		// Live Courier Collection Amount (COD) in Checkout Order Summary Review Table.
-		add_action( 'woocommerce_review_order_after_order_total', array( $this, 'render_checkout_courier_collection_row' ) );
+		// Reseller role verification during checkout confirmation & order processing.
+		add_action( 'woocommerce_checkout_process', array( $this, 'validate_checkout_reseller_role' ) );
+		add_action( 'woocommerce_after_checkout_validation', array( $this, 'validate_checkout_reseller_role_after' ), 10, 2 );
+		add_action( 'woocommerce_checkout_create_order', array( $this, 'guard_checkout_create_order' ), 10, 2 );
+		add_action( 'woocommerce_checkout_create_order', array( $this, 'sync_order_shipping_address' ), 20, 2 );
+		add_action( 'woocommerce_check_cart_items', array( $this, 'check_cart_reseller_permission' ) );
+
+		// Live Courier Collection Amount (COD) in Checkout Order Summary Review Table & Card.
+		add_action( 'woocommerce_review_order_after_order_total', array( $this, 'render_checkout_courier_collection_row' ), 20 );
+		add_action( 'woocommerce_review_order_before_payment', array( $this, 'render_checkout_courier_collection_card' ), 5 );
 
 		// Admin Order details Meta Box (Supports both HPOS and traditional CPT).
 		add_action( 'add_meta_boxes', array( $this, 'register_admin_order_meta_box' ) );
@@ -584,148 +598,220 @@ class WRU_Order_Manager {
 
 	/**
 	 * Customize checkout fields in Bengali for dropshipping resellers.
+	 * Only 5 fields: Customer Name, Customer Mobile, Customer Address, Zip (optional), Reseller Email.
 	 *
 	 * @param array $fields Checkout fields array.
 	 * @return array
 	 */
 	public function customize_checkout_fields( $fields ) {
-		// 1. Combine First Name & Last Name into "কাস্টমার এর সম্পূর্ন নাম" (Required)
-		if ( isset( $fields['billing']['billing_first_name'] ) ) {
-			$fields['billing']['billing_first_name']['label']       = __( 'কাস্টমার এর সম্পূর্ন নাম', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_first_name']['placeholder'] = __( 'কাস্টমারের সম্পূর্ণ নাম লিখুন', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_first_name']['required']    = true;
-			$fields['billing']['billing_first_name']['class']       = array( 'form-row-wide' );
-			$fields['billing']['billing_first_name']['priority']    = 10;
-		}
-		// Unset billing last name so it is merged cleanly
-		unset( $fields['billing']['billing_last_name'] );
+		$billing = array();
 
-		// 2. Customer Mobile Number (Required)
-		if ( isset( $fields['billing']['billing_phone'] ) ) {
-			$fields['billing']['billing_phone']['label']       = __( 'মোবাইল নাম্বার', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_phone']['placeholder'] = __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_phone']['required']    = true;
-			$fields['billing']['billing_phone']['class']       = array( 'form-row-wide' );
-			$fields['billing']['billing_phone']['priority']    = 20;
-		}
-
-		// 3. Customer Delivery Address (Required)
-		if ( isset( $fields['billing']['billing_address_1'] ) ) {
-			$fields['billing']['billing_address_1']['label']       = __( 'ঠিকানা', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_address_1']['placeholder'] = __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম ও থানা লিখুন', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_address_1']['required']    = true;
-			$fields['billing']['billing_address_1']['class']       = array( 'form-row-wide' );
-			$fields['billing']['billing_address_1']['priority']    = 30;
-		}
-		unset( $fields['billing']['billing_address_2'] );
-
-		// 4. Reseller Email (Required)
-		if ( isset( $fields['billing']['billing_email'] ) ) {
-			$fields['billing']['billing_email']['label']       = __( 'রিসেলার এর মেইল', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_email']['placeholder'] = __( 'রিসেলার এর মেইল লিখুন', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_email']['description'] = __( 'অর্ডারের যাবতীয় কনফার্মেশন ও প্রফিট আপডেট এই ইমেইলে যাবে।', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_email']['required']    = true;
-			$fields['billing']['billing_email']['class']       = array( 'form-row-wide' );
-			$fields['billing']['billing_email']['priority']    = 40;
-			if ( is_user_logged_in() ) {
-				$current_user = wp_get_current_user();
-				if ( ! empty( $current_user->user_email ) ) {
-					$fields['billing']['billing_email']['default'] = $current_user->user_email;
-				}
-			}
-		}
-
-		// 5. Postal / Zip Code (Optional)
-		if ( isset( $fields['billing']['billing_postcode'] ) ) {
-			$fields['billing']['billing_postcode']['label']       = __( 'পোস্টাল কোড / জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_postcode']['placeholder'] = __( 'যেমন: 1205 (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_postcode']['required']    = false;
-			$fields['billing']['billing_postcode']['class']       = array( 'form-row-wide' );
-			$fields['billing']['billing_postcode']['priority']    = 50;
-		}
-
-		// City / District (Optional)
-		if ( isset( $fields['billing']['billing_city'] ) ) {
-			$fields['billing']['billing_city']['label']       = __( 'জেলা / শহর (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_city']['placeholder'] = __( 'যেমন: ঢাকা, চট্টগ্রাম, সিলেট ইত্যাদি', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_city']['required']    = false;
-			$fields['billing']['billing_city']['class']       = array( 'form-row-wide' );
-			$fields['billing']['billing_city']['priority']    = 55;
-		}
-
-		if ( isset( $fields['billing']['billing_state'] ) ) {
-			$fields['billing']['billing_state']['label']    = __( 'বিভাগ (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_state']['required'] = false;
-		}
-
-		// Sender / Reseller Shop Name (for shipping packaging label)
-		if ( isset( $fields['billing']['billing_company'] ) ) {
-			$fields['billing']['billing_company']['label']       = __( 'আপনার শপ / পেজ / কোম্পানির নাম (প্যাকেজে প্রেরক হিসেবে থাকবে)', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_company']['placeholder'] = __( 'যেমন: Trendz Fashion BD বা আপনার পেজের নাম', 'woocommerce-resell-utility' );
-			$fields['billing']['billing_company']['required']    = false;
-			$fields['billing']['billing_company']['class']       = array( 'form-row-wide' );
-			$fields['billing']['billing_company']['priority']    = 60;
-			if ( is_user_logged_in() ) {
-				$saved_company = get_user_meta( get_current_user_id(), '_wru_reseller_company_name', true ) ?: get_user_meta( get_current_user_id(), 'billing_company', true );
-				if ( ! empty( $saved_company ) ) {
-					$fields['billing']['billing_company']['default'] = $saved_company;
-				}
-			}
-		}
-
-		$fields['billing']['billing_reseller_phone'] = array(
-			'label'       => __( 'আপনার শপ হটলাইন / মোবাইল নম্বর (লেবেলে প্রেরকের নম্বর)', 'woocommerce-resell-utility' ),
-			'placeholder' => __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' ),
-			'required'    => false,
+		// 1. Customer Name (Required)
+		$billing['billing_first_name'] = array(
+			'label'       => __( 'কাস্টমারের নাম', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'কাস্টমারের সম্পূর্ণ নাম লিখুন', 'woocommerce-resell-utility' ),
+			'required'    => true,
 			'class'       => array( 'form-row-wide' ),
-			'priority'    => 65,
-			'default'     => is_user_logged_in() ? get_user_meta( get_current_user_id(), '_wru_reseller_phone', true ) : '',
+			'priority'    => 10,
 		);
 
-		// Mirror changes to Shipping Fields
-		if ( isset( $fields['shipping']['shipping_first_name'] ) ) {
-			$fields['shipping']['shipping_first_name']['label']       = __( 'কাস্টমার এর সম্পূর্ন নাম', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_first_name']['placeholder'] = __( 'কাস্টমারের সম্পূর্ণ নাম লিখুন', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_first_name']['required']    = true;
-			$fields['shipping']['shipping_first_name']['class']       = array( 'form-row-wide' );
-		}
-		unset( $fields['shipping']['shipping_last_name'] );
+		// 2. Customer Mobile Number (Required)
+		$billing['billing_phone'] = array(
+			'label'       => __( 'কাস্টমারের মোবাইল নাম্বার', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' ),
+			'required'    => true,
+			'type'        => 'tel',
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 20,
+		);
 
-		if ( isset( $fields['shipping']['shipping_phone'] ) ) {
-			$fields['shipping']['shipping_phone']['label']       = __( 'মোবাইল নাম্বার', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_phone']['placeholder'] = __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_phone']['required']    = true;
-			$fields['shipping']['shipping_phone']['class']       = array( 'form-row-wide' );
-		}
+		// 3. Customer Delivery Address (Required)
+		$billing['billing_address_1'] = array(
+			'label'       => __( 'কাস্টমারের ঠিকানা', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম, থানা ও জেলা লিখুন', 'woocommerce-resell-utility' ),
+			'required'    => true,
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 30,
+		);
 
-		if ( isset( $fields['shipping']['shipping_address_1'] ) ) {
-			$fields['shipping']['shipping_address_1']['label']       = __( 'ঠিকানা', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_address_1']['placeholder'] = __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম ও থানা লিখুন', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_address_1']['required']    = true;
-			$fields['shipping']['shipping_address_1']['class']       = array( 'form-row-wide' );
-		}
-		unset( $fields['shipping']['shipping_address_2'] );
+		// 4. Postal / Zip Code (Optional)
+		$billing['billing_postcode'] = array(
+			'label'       => __( 'জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'যেমন: 1205 (ঐচ্ছিক)', 'woocommerce-resell-utility' ),
+			'required'    => false,
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 40,
+		);
 
-		if ( isset( $fields['shipping']['shipping_city'] ) ) {
-			$fields['shipping']['shipping_city']['label']       = __( 'জেলা / শহর (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_city']['placeholder'] = __( 'যেমন: ঢাকা, চট্টগ্রাম', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_city']['required']    = false;
-			$fields['shipping']['shipping_city']['class']       = array( 'form-row-wide' );
-		}
+		// 5. Reseller Email (Required)
+		$billing['billing_email'] = array(
+			'label'       => __( 'রিসেলারের ইমেইল', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'রিসেলারের ইমেইল লিখুন', 'woocommerce-resell-utility' ),
+			'required'    => true,
+			'type'        => 'email',
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 50,
+			'default'     => is_user_logged_in() ? wp_get_current_user()->user_email : '',
+		);
 
-		if ( isset( $fields['shipping']['shipping_postcode'] ) ) {
-			$fields['shipping']['shipping_postcode']['label']    = __( 'পোস্টাল কোড / জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['shipping']['shipping_postcode']['required'] = false;
-			$fields['shipping']['shipping_postcode']['class']    = array( 'form-row-wide' );
-		}
+		$fields['billing']  = $billing;
+		$fields['shipping'] = array();
+		$fields['order']    = array();
 
-		// Order Notes
-		if ( isset( $fields['order']['order_comments'] ) ) {
-			$fields['order']['order_comments']['label']       = __( 'কুরিয়ার ডেলিভারি সংক্রান্ত বিশেষ নোট (ঐচ্ছিক)', 'woocommerce-resell-utility' );
-			$fields['order']['order_comments']['placeholder'] = __( 'যেমন: পার্সেল চেক করে ডেলিভারি দিবেন, সকাল ১০টার পর কল দিবেন ইত্যাদি।', 'woocommerce-resell-utility' );
+		return $fields;
+	}
+
+	/**
+	 * Customize billing fields directly.
+	 *
+	 * @param array $fields Billing fields.
+	 * @return array
+	 */
+	public function customize_billing_fields( $fields ) {
+		$new_fields = array();
+
+		$new_fields['billing_first_name'] = array(
+			'label'       => __( 'কাস্টমারের নাম', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'কাস্টমারের সম্পূর্ণ নাম লিখুন', 'woocommerce-resell-utility' ),
+			'required'    => true,
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 10,
+		);
+
+		$new_fields['billing_phone'] = array(
+			'label'       => __( 'কাস্টমারের মোবাইল নাম্বার', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' ),
+			'required'    => true,
+			'type'        => 'tel',
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 20,
+		);
+
+		$new_fields['billing_address_1'] = array(
+			'label'       => __( 'কাস্টমারের ঠিকানা', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম, থানা ও জেলা লিখুন', 'woocommerce-resell-utility' ),
+			'required'    => true,
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 30,
+		);
+
+		$new_fields['billing_postcode'] = array(
+			'label'       => __( 'জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'যেমন: 1205 (ঐচ্ছিক)', 'woocommerce-resell-utility' ),
+			'required'    => false,
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 40,
+		);
+
+		$new_fields['billing_email'] = array(
+			'label'       => __( 'রিসেলারের ইমেইল', 'woocommerce-resell-utility' ),
+			'placeholder' => __( 'রিসেলারের ইমেইল লিখুন', 'woocommerce-resell-utility' ),
+			'required'    => true,
+			'type'        => 'email',
+			'class'       => array( 'form-row-wide' ),
+			'priority'    => 50,
+			'default'     => is_user_logged_in() ? wp_get_current_user()->user_email : '',
+		);
+
+		return $new_fields;
+	}
+
+	/**
+	 * Suppress separate shipping form since billing is the customer delivery address.
+	 *
+	 * @param array $fields Shipping fields.
+	 * @return array
+	 */
+	public function customize_shipping_fields( $fields ) {
+		return array();
+	}
+
+	/**
+	 * Customize default address fields directly.
+	 *
+	 * @param array $fields Address fields.
+	 * @return array
+	 */
+	public function customize_default_address_fields( $fields ) {
+		if ( isset( $fields['first_name'] ) ) {
+			$fields['first_name']['label']       = __( 'কাস্টমারের নাম', 'woocommerce-resell-utility' );
+			$fields['first_name']['placeholder'] = __( 'কাস্টমারের সম্পূর্ণ নাম লিখুন', 'woocommerce-resell-utility' );
+			$fields['first_name']['required']    = true;
+			$fields['first_name']['class']       = array( 'form-row-wide' );
+		}
+		unset( $fields['last_name'] );
+
+		if ( isset( $fields['address_1'] ) ) {
+			$fields['address_1']['label']       = __( 'কাস্টমারের ঠিকানা', 'woocommerce-resell-utility' );
+			$fields['address_1']['placeholder'] = __( 'বাসা/রোড নম্বর, এলাকা বা গ্রাম, থানা ও জেলা লিখুন', 'woocommerce-resell-utility' );
+			$fields['address_1']['required']    = true;
+			$fields['address_1']['class']       = array( 'form-row-wide' );
+		}
+		unset( $fields['address_2'] );
+		unset( $fields['company'] );
+		unset( $fields['city'] );
+		unset( $fields['state'] );
+
+		if ( isset( $fields['postcode'] ) ) {
+			$fields['postcode']['label']       = __( 'জিপ কোড (ঐচ্ছিক)', 'woocommerce-resell-utility' );
+			$fields['postcode']['placeholder'] = __( 'যেমন: 1205 (ঐচ্ছিক)', 'woocommerce-resell-utility' );
+			$fields['postcode']['required']    = false;
+			$fields['postcode']['class']       = array( 'form-row-wide' );
 		}
 
 		return $fields;
+	}
+
+	/**
+	 * Ensure last name & required defaults are populated so WooCommerce core validation succeeds.
+	 *
+	 * @param array $data Posted checkout data.
+	 * @return array
+	 */
+	public function filter_checkout_posted_data( $data ) {
+		if ( empty( $data['billing_last_name'] ) && ! empty( $data['billing_first_name'] ) ) {
+			$data['billing_last_name'] = $data['billing_first_name'];
+		}
+		if ( empty( $data['billing_country'] ) ) {
+			$data['billing_country'] = 'BD';
+		}
+		if ( empty( $data['billing_city'] ) ) {
+			$data['billing_city'] = 'Dhaka';
+		}
+
+		// Mirror to shipping fields for courier tracking & shipping providers
+		$data['shipping_first_name'] = ! empty( $data['billing_first_name'] ) ? $data['billing_first_name'] : '';
+		$data['shipping_last_name']  = ! empty( $data['billing_last_name'] ) ? $data['billing_last_name'] : '';
+		$data['shipping_phone']      = ! empty( $data['billing_phone'] ) ? $data['billing_phone'] : '';
+		$data['shipping_address_1']  = ! empty( $data['billing_address_1'] ) ? $data['billing_address_1'] : '';
+		$data['shipping_postcode']   = ! empty( $data['billing_postcode'] ) ? $data['billing_postcode'] : '';
+		$data['shipping_country']    = ! empty( $data['billing_country'] ) ? $data['billing_country'] : 'BD';
+		$data['shipping_city']       = ! empty( $data['billing_city'] ) ? $data['billing_city'] : 'Dhaka';
+
+		return $data;
+	}
+
+	/**
+	 * Sync billing address into order shipping fields on checkout creation.
+	 *
+	 * @param \WC_Order $order Order object.
+	 * @param array     $data  Checkout posted data.
+	 */
+	public function sync_order_shipping_address( $order, $data ) {
+		if ( ! $order ) {
+			return;
+		}
+		$order->set_shipping_first_name( $order->get_billing_first_name() );
+		$order->set_shipping_last_name( $order->get_billing_last_name() );
+		$order->set_shipping_phone( $order->get_billing_phone() );
+		$order->set_shipping_address_1( $order->get_billing_address_1() );
+		$order->set_shipping_postcode( $order->get_billing_postcode() );
+		if ( ! $order->get_shipping_city() ) {
+			$order->set_shipping_city( 'Dhaka' );
+		}
+		if ( ! $order->get_shipping_country() ) {
+			$order->set_shipping_country( 'BD' );
+		}
 	}
 
 	/**
@@ -747,12 +833,14 @@ class WRU_Order_Manager {
 	}
 
 	/**
-	 * Render live Courier Collection Amount (COD) in Checkout Order Summary Review Table.
+	 * Helper to compute live courier collection amount.
+	 *
+	 * @return float
 	 */
-	public function render_checkout_courier_collection_row() {
+	public static function get_cart_courier_collection_amount() {
 		$cart = WC()->cart;
 		if ( ! $cart || $cart->is_empty() ) {
-			return;
+			return 0.0;
 		}
 
 		$total_collection = 0.0;
@@ -769,29 +857,154 @@ class WRU_Order_Manager {
 			$total_collection += ( $res_price * $qty );
 		}
 
-		$shipping_total    = (float) $cart->get_shipping_total() + (float) $cart->get_shipping_tax();
-		$collection_amount = $total_collection + $shipping_total;
+		$collection_amount = self::get_cart_courier_collection_amount();
+		if ( $collection_amount <= 0 ) {
+			return;
+		}
 		?>
-		<tr class="wru-checkout-courier-collection-row">
-			<th>
-				<span class="wru-collection-title">
+		<tr class="wru-checkout-courier-collection-row" style="background:#ecfdf5; border-top:2px solid #10b981;">
+			<th style="padding:12px 14px; font-weight:700; color:#065f46;">
+				<span class="wru-collection-title" style="display:block; font-size:14px;">
 					<?php esc_html_e( 'কুরিয়ার কালেকশন এমাউন্ট (COD)', 'woocommerce-resell-utility' ); ?>
 				</span>
-				<small class="wru-collection-subtext">
-					<?php esc_html_e( '(কাস্টমারের কাছ থেকে কুরিয়ার এই টাকা সংগ্রহ করবে)', 'woocommerce-resell-utility' ); ?>
+				<small class="wru-collection-subtext" style="display:block; font-size:11px; color:#047857; font-weight:normal;">
+					<?php esc_html_e( '(কাস্টমারের কাছ থেকে কুরিয়ার এই মোট টাকা সংগ্রহ করবে)', 'woocommerce-resell-utility' ); ?>
 				</small>
 			</th>
-			<td>
-				<strong class="wru-checkout-collection-amount"><?php echo wc_price( $collection_amount ); ?></strong>
+			<td style="padding:12px 14px; text-align:right;">
+				<strong class="wru-checkout-collection-amount" style="font-size:17px; font-weight:800; color:#065f46;"><?php echo wc_price( $collection_amount ); ?></strong>
 			</td>
 		</tr>
 		<?php
 	}
 
 	/**
-	 * Render clear dropshipping instructions banner at the top of Checkout.
+	 * Render prominent Courier Collection COD Summary Card right before payment methods.
+	 */
+	public function render_checkout_courier_collection_card() {
+		$collection_amount = self::get_cart_courier_collection_amount();
+		if ( $collection_amount <= 0 ) {
+			return;
+		}
+		?>
+		<div class="wru-checkout-courier-collection-box" style="background:#ecfdf5; border:2px solid #10b981; border-radius:10px; padding:15px 18px; margin:16px 0 20px 0; box-shadow:0 1px 3px rgba(16,185,129,0.12);">
+			<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+				<div style="display:flex; align-items:center; gap:10px;">
+					<span style="font-size:24px; line-height:1;">🚚</span>
+					<div>
+						<strong style="display:block; font-size:15px; color:#065f46; font-weight:700;">
+							<?php esc_html_e( 'কুরিয়ার কালেকশন এমাউন্ট (COD)', 'woocommerce-resell-utility' ); ?>
+						</strong>
+						<small style="display:block; font-size:12px; color:#047857;">
+							<?php esc_html_e( '(কাস্টমারের কাছ থেকে কুরিয়ার এই মোট টাকা সংগ্রহ করবে)', 'woocommerce-resell-utility' ); ?>
+						</small>
+					</div>
+				</div>
+				<div style="text-align:right;">
+					<strong class="wru-checkout-collection-amount" style="font-size:22px; font-weight:800; color:#065f46;">
+						<?php echo wc_price( $collection_amount ); ?>
+					</strong>
+				</div>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Validate reseller role during checkout confirmation (runs when Place Order is clicked).
+	 * If the user does not have the reseller role, the checkout fails immediately with a notice.
+	 */
+	public function validate_checkout_reseller_role() {
+		if ( ! WRU_Reseller_Manager::is_reseller() ) {
+			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
+			wc_add_notice( $message, 'error' );
+		}
+	}
+
+	/**
+	 * Secondary validation hook with WP_Error object.
+	 *
+	 * @param array     $data   Posted checkout data.
+	 * @param \WP_Error $errors Validation errors object.
+	 */
+	public function validate_checkout_reseller_role_after( $data, $errors ) {
+		if ( ! WRU_Reseller_Manager::is_reseller() ) {
+			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
+			if ( is_wp_error( $errors ) && ! wc_has_notice( $message, 'error' ) ) {
+				$errors->add( 'wru_not_reseller', $message );
+			}
+		}
+	}
+
+	/**
+	 * Final barrier right before order creation in DB. Throws exception if not a reseller.
+	 *
+	 * @param \WC_Order $order Order object.
+	 * @param array     $data  Checkout posted data.
+	 * @throws \Exception When user lacks reseller role.
+	 */
+	public function guard_checkout_create_order( $order, $data ) {
+		if ( ! WRU_Reseller_Manager::is_reseller() ) {
+			$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
+			throw new Exception( wp_strip_all_tags( $message ) );
+		}
+	}
+
+	/**
+	 * Display warning notice on checkout page if customer is not an approved reseller.
+	 */
+	public function check_cart_reseller_permission() {
+		if ( is_checkout() && ! is_order_received_page() ) {
+			if ( ! WRU_Reseller_Manager::is_reseller() ) {
+				$message = WRU_Reseller_Manager::get_reseller_checkout_error_message();
+				if ( ! wc_has_notice( $message, 'error' ) && ! wc_has_notice( $message, 'notice' ) ) {
+					wc_add_notice( $message, 'error' );
+				}
+			}
+		}
+	}
+
+	/**
+	 * Render clear dropshipping instructions or role restriction banner at the top of Checkout.
 	 */
 	public function render_checkout_banner() {
+		$user_id     = get_current_user_id();
+		$is_reseller = WRU_Reseller_Manager::is_reseller( $user_id );
+
+		if ( ! $is_reseller ) {
+			$status    = $user_id ? get_user_meta( $user_id, '_wru_reseller_status', true ) : '';
+			$login_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : wp_login_url();
+			?>
+			<div class="wru-checkout-restriction-banner" style="background: #fef2f2; border: 1.5px solid #f87171; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
+				<div style="display:flex; align-items:flex-start; gap:12px;">
+					<span style="font-size:24px; line-height:1; flex-shrink:0;">⛔</span>
+					<div>
+						<h4 style="margin: 0 0 6px 0; color: #991b1b; font-size: 16px; font-weight: 700;">
+							<?php esc_html_e( 'শুধুমাত্র অনুমোদিত রিসেলারদের জন্য', 'woocommerce-resell-utility' ); ?>
+						</h4>
+						<p style="margin: 0; color: #b91c1c; font-size: 13.5px; line-height: 1.6;">
+							<?php
+							if ( ! $user_id ) {
+								printf(
+									/* translators: %s: account URL */
+									__( 'অর্ডার কনফার্ম করতে অনুমোদিত রিসেলার রোল থাকা বাধ্যতামূলক। অনুগ্রহ করে প্রথমে আপনার <a href="%s" style="color:#7f1d1d; text-decoration:underline; font-weight:700;">রিসেলার একাউন্টে লগইন করুন</a> অথবা নতুন রিসেলার হিসেবে রেজিস্ট্রেশন করুন।', 'woocommerce-resell-utility' ),
+									esc_url( $login_url )
+								);
+							} elseif ( 'pending' === $status ) {
+								esc_html_e( 'আপনার রিসেলার একাউন্টের আবেদনটি বর্তমানে পেন্ডিং (অ্যাডমিন অনুমোদনের অপেক্ষায়) রয়েছে। অ্যাডমিন অনুমোদন না করা পর্যন্ত অর্ডার কনফার্ম হবে না।', 'woocommerce-resell-utility' );
+							} elseif ( 'rejected' === $status ) {
+								esc_html_e( 'আপনার রিসেলার আবেদনটি বাতিল করা হয়েছে। বিস্তারিত জানতে অ্যাডমিনের সাথে যোগাযোগ করুন।', 'woocommerce-resell-utility' );
+							} else {
+								esc_html_e( 'আপনার একাউন্টে রিসেলার রোল (Reseller Role) নেই। শুধুমাত্র অনুমোদিত রিসেলাররাই এই স্টোরে অর্ডার কনফার্ম করতে পারবেন।', 'woocommerce-resell-utility' );
+							}
+							?>
+						</p>
+					</div>
+				</div>
+			</div>
+			<?php
+			return;
+		}
 		?>
 		<div class="wru-checkout-guidance-banner" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
 			<h4 style="margin: 0 0 6px 0; color: #166534; font-size: 15px; font-weight: 700;">

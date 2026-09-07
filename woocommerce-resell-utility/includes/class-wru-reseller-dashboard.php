@@ -95,13 +95,13 @@ class WRU_Reseller_Dashboard {
 			$new_items[ $key ] = $title;
 			if ( 'orders' === $key ) {
 				$new_items[ self::ENDPOINT ]         = __( 'Reseller Dashboard', 'woocommerce-resell-utility' );
-				$new_items[ self::ENDPOINT_PAYOUTS ] = __( 'Reseller Cash & Payouts', 'woocommerce-resell-utility' );
+				$new_items[ self::ENDPOINT_PAYOUTS ] = 'Reseller Cash & Payouts';
 			}
 		}
 
 		if ( ! isset( $new_items[ self::ENDPOINT ] ) ) {
 			$new_items[ self::ENDPOINT ]         = __( 'Reseller Dashboard', 'woocommerce-resell-utility' );
-			$new_items[ self::ENDPOINT_PAYOUTS ] = __( 'Reseller Cash & Payouts', 'woocommerce-resell-utility' );
+			$new_items[ self::ENDPOINT_PAYOUTS ] = 'Reseller Cash & Payouts';
 		}
 
 		return $new_items;
@@ -120,12 +120,14 @@ class WRU_Reseller_Dashboard {
 			return;
 		}
 
-		$user_id = get_current_user_id();
-		$company = isset( $_POST['wru_reseller_company_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_company_name'] ) ) : '';
-		$phone   = isset( $_POST['wru_reseller_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_phone'] ) ) : '';
-		$method  = isset( $_POST['wru_payout_method'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_method'] ) ) : '';
-		$number  = isset( $_POST['wru_payout_number'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_number'] ) ) : '';
-		$notes   = isset( $_POST['wru_payout_notes'] ) ? sanitize_textarea_field( wp_unslash( $_POST['wru_payout_notes'] ) ) : '';
+		$user_id   = get_current_user_id();
+		$company   = isset( $_POST['wru_reseller_company_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_company_name'] ) ) : '';
+		$phone     = isset( $_POST['wru_reseller_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_phone'] ) ) : '';
+		$wa        = isset( $_POST['wru_reseller_whatsapp'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_whatsapp'] ) ) : '';
+		$store_url = isset( $_POST['wru_reseller_store_url'] ) ? esc_url_raw( wp_unslash( $_POST['wru_reseller_store_url'] ) ) : '';
+		$method    = isset( $_POST['wru_payout_method'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_method'] ) ) : '';
+		$number    = isset( $_POST['wru_payout_number'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_number'] ) ) : '';
+		$notes     = isset( $_POST['wru_payout_notes'] ) ? sanitize_textarea_field( wp_unslash( $_POST['wru_payout_notes'] ) ) : '';
 
 		if ( ! empty( $company ) ) {
 			update_user_meta( $user_id, '_wru_reseller_company_name', $company );
@@ -134,9 +136,49 @@ class WRU_Reseller_Dashboard {
 		if ( ! empty( $phone ) ) {
 			update_user_meta( $user_id, '_wru_reseller_phone', $phone );
 		}
+		if ( ! empty( $wa ) ) {
+			update_user_meta( $user_id, '_wru_reseller_whatsapp', $wa );
+		}
+		if ( ! empty( $store_url ) ) {
+			update_user_meta( $user_id, '_wru_reseller_store_url', $store_url );
+		}
 		update_user_meta( $user_id, '_wru_payout_method', $method );
 		update_user_meta( $user_id, '_wru_payout_number', $number );
-		wc_add_notice( __( 'আপনার পেআউট ও শপ/কোম্পানির তথ্য সফলভাবে সংরক্ষিত হয়েছে।', 'woocommerce-resell-utility' ), 'success' );
+		if ( ! empty( $notes ) ) {
+			update_user_meta( $user_id, '_wru_payout_notes', $notes );
+		}
+
+		// Handle NID Document Uploads
+		if ( ! function_exists( 'wp_handle_upload' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+		$upload_overrides = array(
+			'test_form' => false,
+			'mimes'     => array(
+				'jpg|jpeg|jpe' => 'image/jpeg',
+				'png'          => 'image/png',
+				'webp'         => 'image/webp',
+				'pdf'          => 'application/pdf',
+			),
+		);
+
+		if ( ! empty( $_FILES['wru_reseller_nid_front']['name'] ) && empty( $_FILES['wru_reseller_nid_front']['error'] ) ) {
+			$upload_front = wp_handle_upload( $_FILES['wru_reseller_nid_front'], $upload_overrides );
+			if ( ! empty( $upload_front['url'] ) ) {
+				update_user_meta( $user_id, '_wru_nid_front_url', $upload_front['url'] );
+				update_user_meta( $user_id, '_wru_nid_front_file', $upload_front['file'] );
+			}
+		}
+
+		if ( ! empty( $_FILES['wru_reseller_nid_back']['name'] ) && empty( $_FILES['wru_reseller_nid_back']['error'] ) ) {
+			$upload_back = wp_handle_upload( $_FILES['wru_reseller_nid_back'], $upload_overrides );
+			if ( ! empty( $upload_back['url'] ) ) {
+				update_user_meta( $user_id, '_wru_nid_back_url', $upload_back['url'] );
+				update_user_meta( $user_id, '_wru_nid_back_file', $upload_back['file'] );
+			}
+		}
+
+		wc_add_notice( __( 'আপনার পেআউট ও NID ডকুমেন্টস সফলভাবে সংরক্ষিত হয়েছে।', 'woocommerce-resell-utility' ), 'success' );
 
 		wp_safe_redirect( wc_get_account_endpoint_url( self::ENDPOINT_PAYOUTS ) );
 		exit;
@@ -449,11 +491,15 @@ class WRU_Reseller_Dashboard {
 		$total_earned       = $balance_data['total_earned'];
 
 		// Saved payout & brand details
-		$company_name  = get_user_meta( $user_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $user_id, 'billing_company', true );
-		$reseller_phone= get_user_meta( $user_id, '_wru_reseller_phone', true );
-		$payout_method = get_user_meta( $user_id, '_wru_payout_method', true );
-		$payout_number = get_user_meta( $user_id, '_wru_payout_number', true );
-		$payout_notes  = get_user_meta( $user_id, '_wru_payout_notes', true );
+		$company_name       = get_user_meta( $user_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $user_id, 'billing_company', true );
+		$reseller_phone     = get_user_meta( $user_id, '_wru_reseller_phone', true );
+		$reseller_wa        = get_user_meta( $user_id, '_wru_reseller_whatsapp', true );
+		$reseller_store_url = get_user_meta( $user_id, '_wru_reseller_store_url', true );
+		$reseller_nid_front = get_user_meta( $user_id, '_wru_nid_front_url', true );
+		$reseller_nid_back  = get_user_meta( $user_id, '_wru_nid_back_url', true );
+		$payout_method      = get_user_meta( $user_id, '_wru_payout_method', true );
+		$payout_number      = get_user_meta( $user_id, '_wru_payout_number', true );
+		$payout_notes       = get_user_meta( $user_id, '_wru_payout_notes', true );
 
 		// Query reseller's cashout requests
 		$cashout_posts = get_posts( array(
@@ -473,7 +519,7 @@ class WRU_Reseller_Dashboard {
 			<!-- Header Banner -->
 			<div class="wru-dashboard-header">
 				<div class="wru-user-welcome">
-					<h2><?php esc_html_e( 'রিসেলার ক্যাশ ও পেআউট হাব', 'woocommerce-resell-utility' ); ?></h2>
+					<h2>Reseller Cash & Payouts</h2>
 					<p><?php esc_html_e( 'আপনার উত্তোলনযোগ্য ব্যালেন্স থেকে টাকা উত্তোলনের রিকোয়েস্ট পাঠান এবং সমস্ত লেনদেন হিস্ট্রি ট্র্যাক করুন।', 'woocommerce-resell-utility' ); ?></p>
 				</div>
 				<div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:10px 16px; text-align:right;">
@@ -680,7 +726,7 @@ class WRU_Reseller_Dashboard {
 				<p class="wru-payout-desc">
 					<?php esc_html_e( 'আপনার নিয়মিত পেমেন্ট গ্রহণ করার মোবাইল বা ব্যাংক একাউন্ট তথ্য নিচে সংরক্ষণ করে রাখতে পারেন।', 'woocommerce-resell-utility' ); ?>
 				</p>
-				<form method="post" action="" class="wru-payout-form">
+				<form method="post" action="" class="wru-payout-form" enctype="multipart/form-data">
 					<?php wp_nonce_field( 'wru_save_payout_action', 'wru_payout_nonce' ); ?>
 					<div class="wru-form-row">
 						<div class="wru-field-col">
@@ -694,6 +740,20 @@ class WRU_Reseller_Dashboard {
 								<?php esc_html_e( 'আপনার শপ হটলাইন / মোবাইল নম্বর:', 'woocommerce-resell-utility' ); ?>
 							</label>
 							<input type="text" name="wru_reseller_phone" id="wru_reseller_phone" class="wru-input-text" value="<?php echo esc_attr( $reseller_phone ); ?>" placeholder="যেমন: 017XXXXXXXX" />
+						</div>
+					</div>
+					<div class="wru-form-row">
+						<div class="wru-field-col">
+							<label for="wru_reseller_whatsapp">
+								<?php esc_html_e( 'WhatsApp নম্বর (অর্ডার ও কাস্টমার যোগাযোগের জন্য):', 'woocommerce-resell-utility' ); ?>
+							</label>
+							<input type="text" name="wru_reseller_whatsapp" id="wru_reseller_whatsapp" class="wru-input-text" value="<?php echo esc_attr( $reseller_wa ); ?>" placeholder="যেমন: 017XXXXXXXX" />
+						</div>
+						<div class="wru-field-col">
+							<label for="wru_reseller_store_url">
+								<?php esc_html_e( 'আপনার ফেসবুক পেজ বা ওয়েবসাইটের লিংক:', 'woocommerce-resell-utility' ); ?>
+							</label>
+							<input type="url" name="wru_reseller_store_url" id="wru_reseller_store_url" class="wru-input-text" value="<?php echo esc_attr( $reseller_store_url ); ?>" placeholder="https://facebook.com/yourpage" />
 						</div>
 					</div>
 					<div class="wru-form-row">
@@ -716,8 +776,37 @@ class WRU_Reseller_Dashboard {
 						<label for="wru_payout_notes"><?php esc_html_e( 'অতিরিক্ত বিবরণ (ব্যাংক নাম, ব্রাঞ্চ, রাউটিং ইত্যাদি):', 'woocommerce-resell-utility' ); ?></label>
 						<textarea name="wru_payout_notes" id="wru_payout_notes" rows="2" class="wru-textarea" placeholder="<?php esc_attr_e( 'প্রয়োজনীয় বিবরণ...', 'woocommerce-resell-utility' ); ?>"><?php echo esc_textarea( $payout_notes ); ?></textarea>
 					</div>
+
+					<!-- NID Upload / Update Section -->
+					<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin:16px 0;">
+						<h4 style="margin:0 0 10px 0; color:#0f172a; font-size:14px;">🪪 জাতীয় পরিচয়পত্র (NID ডকুমেন্টস আপডেট)</h4>
+						<p style="margin:0 0 12px 0; font-size:12.5px; color:#64748b;">
+							<?php esc_html_e( 'আপনার NID কার্ড পরিবর্তন বা নতুন করে আপলোড করতে চাইলে নিচের ফাইল নির্বাচন করুন (JPG, PNG, WEBP বা PDF, সর্বোচ্চ ৫MB):', 'woocommerce-resell-utility' ); ?>
+						</p>
+						<div class="wru-form-row">
+							<div class="wru-field-col">
+								<label for="wru_reseller_nid_front">
+									<?php esc_html_e( 'NID কার্ডের সামনের অংশ (Front):', 'woocommerce-resell-utility' ); ?>
+									<?php if ( ! empty( $reseller_nid_front ) ) : ?>
+										<a href="<?php echo esc_url( $reseller_nid_front ); ?>" target="_blank" style="color:#0284c7; font-size:12px; margin-left:6px; font-weight:normal;">[বর্তমান ফাইল দেখুন]</a>
+									<?php endif; ?>
+								</label>
+								<input type="file" name="wru_reseller_nid_front" id="wru_reseller_nid_front" accept="image/*,application/pdf" class="wru-input-text" style="padding:6px; font-size:12.5px;" />
+							</div>
+							<div class="wru-field-col">
+								<label for="wru_reseller_nid_back">
+									<?php esc_html_e( 'NID কার্ডের পেছনের অংশ (Back):', 'woocommerce-resell-utility' ); ?>
+									<?php if ( ! empty( $reseller_nid_back ) ) : ?>
+										<a href="<?php echo esc_url( $reseller_nid_back ); ?>" target="_blank" style="color:#0284c7; font-size:12px; margin-left:6px; font-weight:normal;">[বর্তমান ফাইল দেখুন]</a>
+									<?php endif; ?>
+								</label>
+								<input type="file" name="wru_reseller_nid_back" id="wru_reseller_nid_back" accept="image/*,application/pdf" class="wru-input-text" style="padding:6px; font-size:12.5px;" />
+							</div>
+						</div>
+					</div>
+
 					<button type="submit" name="wru_save_payout" value="1" class="button wru-save-payout-btn">
-						<?php esc_html_e( 'পেআউট তথ্য সংরক্ষণ করুন', 'woocommerce-resell-utility' ); ?>
+						<?php esc_html_e( 'তথ্য ও NID সংরক্ষণ করুন', 'woocommerce-resell-utility' ); ?>
 					</button>
 				</form>
 			</div>

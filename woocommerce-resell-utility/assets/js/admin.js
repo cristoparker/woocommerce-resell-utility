@@ -167,6 +167,160 @@
 			$('#wru-reject-applicant-modal').fadeIn(200);
 		});
 
+		// 7. Delete Reseller Applicant Modal
+		$(document).on('click', '.wru-btn-delete-applicant', function(e) {
+			e.preventDefault();
+			var userId   = $(this).data('user-id');
+			var userName = $(this).data('user-name');
+
+			$('#wru_del_applicant_id').val(userId);
+			$('#wru_del_applicant_name').text(userName);
+
+			$('#wru-delete-applicant-modal').fadeIn(200);
+		});
+
+		// 8. View Reseller Profile & NID Modal
+		$(document).on('click', '.wru-btn-view-reseller', function(e) {
+			e.preventDefault();
+			var userData = $(this).data('user-json');
+
+			if (!userData) {
+				return;
+			}
+
+			// Set Modal Title
+			$('#wru-view-reseller-modal .wru-modal-header h3').text(
+				(userData.name ? userData.name : 'রিসেলার') + ' - বিস্তারিত প্রোফাইল ও NID (ID: #' + (userData.id || '') + ')'
+			);
+
+			// Format WhatsApp Link
+			var waLink = '';
+			if (userData.whatsapp) {
+				var cleanWa = String(userData.whatsapp).replace(/[^0-9]/g, '');
+				if (String(userData.whatsapp).indexOf('http') === 0) {
+					waLink = userData.whatsapp;
+				} else if (cleanWa.length === 11 && cleanWa.indexOf('01') === 0) {
+					waLink = 'https://wa.me/88' + cleanWa;
+				} else if (cleanWa.length > 5) {
+					waLink = 'https://wa.me/' + cleanWa;
+				}
+			}
+
+			// Format Dossier HTML
+			var html = '';
+			html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">';
+			
+			// Column 1: Personal & Store Info
+			html += '  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">';
+			html += '    <h4 style="margin:0 0 12px 0; color:#0f172a; font-size:13.5px; border-bottom:1.5px solid #e2e8f0; padding-bottom:6px;">👤 ব্যক্তিগত ও যোগাযোগের তথ্য</h4>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>পূর্ণ নাম:</strong> ' + $('<div>').text(userData.name || '').html() + '</p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>ইউজারনেম:</strong> <code>' + $('<div>').text(userData.username || '').html() + '</code></p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>ইমেইল:</strong> <a href="mailto:' + encodeURI(userData.email || '') + '" style="color:#0284c7;">' + $('<div>').text(userData.email || '').html() + '</a></p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>মোবাইল:</strong> ' + (userData.phone ? '<a href="tel:' + encodeURI(userData.phone) + '" style="color:#0f172a; font-weight:600;">' + $('<div>').text(userData.phone).html() + '</a>' : '<span style="color:#94a3b8; font-style:italic;">দেওয়া হয়নি</span>') + '</p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>শপ / পেজের নাম:</strong> ' + (userData.company ? '<strong style="color:#0284c7;">' + $('<div>').text(userData.company).html() + '</strong>' : '<span style="color:#94a3b8; font-style:italic;">দেওয়া হয়নি</span>') + '</p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>WhatsApp:</strong> ' + (userData.whatsapp ? (waLink ? '<a href="' + encodeURI(waLink) + '" target="_blank" rel="noopener noreferrer" style="color:#16a34a; font-weight:700;">' + $('<div>').text(userData.whatsapp).html() + ' &rarr;</a>' : $('<div>').text(userData.whatsapp).html()) : '<span style="color:#94a3b8; font-style:italic;">দেওয়া হয়নি</span>') + '</p>';
+			if (userData.store_url) {
+				html += '    <p style="margin:0; font-size:13px;"><strong>ফেসবুক / ওয়েবসাইট:</strong> <a href="' + encodeURI(userData.store_url) + '" target="_blank" rel="noopener noreferrer" style="color:#0284c7; font-weight:600; text-decoration:underline;">' + $('<div>').text(userData.store_url).html() + ' &rarr;</a></p>';
+			}
+			html += '  </div>';
+
+			// Column 2: Financial & Payout Info
+			html += '  <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">';
+			html += '    <h4 style="margin:0 0 12px 0; color:#0f172a; font-size:13.5px; border-bottom:1.5px solid #e2e8f0; padding-bottom:6px;">💼 আর্থিক বিবরণী ও পেআউট</h4>';
+			var balanceColor = (userData.raw_balance && userData.raw_balance < 0) ? '#dc2626' : '#16a34a';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>উত্তোলনযোগ্য ব্যালেন্স:</strong> <strong style="font-size:15px; color:' + balanceColor + ';">' + (userData.balance || '৳0.00') + '</strong></p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>মোট অর্জিত লাভ:</strong> <strong style="color:#16a34a;">' + (userData.earned || '৳0.00') + '</strong></p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>পরিশোধিত ক্যাশআউট:</strong> ' + (userData.withdrawn || '৳0.00') + '</p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>মোট সম্পন্ন অর্ডার:</strong> <strong>' + (userData.completed || 0) + '</strong> / ' + (userData.orders_count || 0) + '</p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>পেআউট মাধ্যম:</strong> <strong>' + $('<div>').text(userData.p_method || 'সেট করা নেই').html() + '</strong></p>';
+			html += '    <p style="margin:0 0 7px 0; font-size:13px;"><strong>পেআউট নাম্বার:</strong> <code>' + $('<div>').text(userData.p_number || 'সেট করা নেই').html() + '</code></p>';
+			html += '    <p style="margin:0; font-size:12px; color:#64748b;"><strong>রেজিস্ট্রেশন তারিখ:</strong> ' + (userData.registered || '') + '</p>';
+			html += '  </div>';
+			html += '</div>';
+
+			// NID Section
+			html += '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">';
+			html += '  <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #e2e8f0; padding-bottom:8px; margin-bottom:14px;">';
+			html += '    <h4 style="margin:0; color:#0f172a; font-size:14px; font-weight:700;">🪪 জাতীয় পরিচয়পত্র (National ID Card Documents)</h4>';
+			if (userData.nid_front || userData.nid_back) {
+				html += '    <span style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; border-radius:4px; padding:2px 8px; font-size:11px; font-weight:700;">NID ভেরিফাইড আপলোড</span>';
+			} else {
+				html += '    <span style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:4px; padding:2px 8px; font-size:11px;">NID আপলোড করা হয়নি</span>';
+			}
+			html += '  </div>';
+			html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">';
+
+			// Front
+			html += '    <div style="text-align:center; background:#ffffff; border:1.5px solid #cbd5e1; border-radius:8px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
+			html += '      <strong style="display:block; font-size:12.5px; margin-bottom:10px; color:#1e293b;">NID কার্ডের সামনের অংশ (Front)</strong>';
+			if (userData.nid_front) {
+				if (/\.(pdf)$/i.test(userData.nid_front)) {
+					html += '      <div style="padding:24px 10px;">';
+					html += '        <span style="font-size:36px; display:block; margin-bottom:8px;">📄</span>';
+					html += '        <a href="' + encodeURI(userData.nid_front) + '" target="_blank" class="button button-primary" style="font-size:12px;">PDF ডকুমেন্ট দেখুন / ডাউনলোড</a>';
+					html += '      </div>';
+				} else {
+					html += '      <div style="background:#f1f5f9; border-radius:6px; padding:8px; margin-bottom:10px; min-height:160px; display:flex; align-items:center; justify-content:center;">';
+					html += '        <a href="' + encodeURI(userData.nid_front) + '" target="_blank" title="বড় করে দেখতে ক্লিক করুন">';
+					html += '          <img src="' + encodeURI(userData.nid_front) + '" style="max-width:100%; max-height:190px; object-fit:contain; border-radius:4px;" alt="NID Front" />';
+					html += '        </a>';
+					html += '      </div>';
+					html += '      <div style="display:flex; gap:8px; justify-content:center;">';
+					html += '        <a href="' + encodeURI(userData.nid_front) + '" target="_blank" class="button button-small" style="font-size:11.5px;">🔍 বড় করে দেখুন</a>';
+					html += '        <a href="' + encodeURI(userData.nid_front) + '" download class="button button-small" style="font-size:11.5px;">📥 ডাউনলোড</a>';
+					html += '      </div>';
+				}
+			} else {
+				html += '      <div style="padding:30px 10px; color:#94a3b8; font-size:12.5px; font-style:italic;">';
+				html += '        <span style="font-size:28px; display:block; margin-bottom:6px;">⚠️</span>';
+				html += '        কোনো NID সামনের ছবি আপলোড করা নেই';
+				html += '      </div>';
+			}
+			html += '    </div>';
+
+			// Back
+			html += '    <div style="text-align:center; background:#ffffff; border:1.5px solid #cbd5e1; border-radius:8px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
+			html += '      <strong style="display:block; font-size:12.5px; margin-bottom:10px; color:#1e293b;">NID কার্ডের পেছনের অংশ (Back)</strong>';
+			if (userData.nid_back) {
+				if (/\.(pdf)$/i.test(userData.nid_back)) {
+					html += '      <div style="padding:24px 10px;">';
+					html += '        <span style="font-size:36px; display:block; margin-bottom:8px;">📄</span>';
+					html += '        <a href="' + encodeURI(userData.nid_back) + '" target="_blank" class="button button-primary" style="font-size:12px;">PDF ডকুমেন্ট দেখুন / ডাউনলোড</a>';
+					html += '      </div>';
+				} else {
+					html += '      <div style="background:#f1f5f9; border-radius:6px; padding:8px; margin-bottom:10px; min-height:160px; display:flex; align-items:center; justify-content:center;">';
+					html += '        <a href="' + encodeURI(userData.nid_back) + '" target="_blank" title="বড় করে দেখতে ক্লিক করুন">';
+					html += '          <img src="' + encodeURI(userData.nid_back) + '" style="max-width:100%; max-height:190px; object-fit:contain; border-radius:4px;" alt="NID Back" />';
+					html += '        </a>';
+					html += '      </div>';
+					html += '      <div style="display:flex; gap:8px; justify-content:center;">';
+					html += '        <a href="' + encodeURI(userData.nid_back) + '" target="_blank" class="button button-small" style="font-size:11.5px;">🔍 বড় করে দেখুন</a>';
+					html += '        <a href="' + encodeURI(userData.nid_back) + '" download class="button button-small" style="font-size:11.5px;">📥 ডাউনলোড</a>';
+					html += '      </div>';
+				}
+			} else {
+				html += '      <div style="padding:30px 10px; color:#94a3b8; font-size:12.5px; font-style:italic;">';
+				html += '        <span style="font-size:28px; display:block; margin-bottom:6px;">⚠️</span>';
+				html += '        কোনো NID পেছনের ছবি আপলোড করা নেই';
+				html += '      </div>';
+			}
+			html += '    </div>';
+
+			html += '  </div>';
+			html += '</div>';
+
+			$('#wru_view_profile_body').html(html);
+
+			// PDF Export button in footer
+			if (userData.pdf_url) {
+				$('#wru_view_profile_pdf_holder').html('<a href="' + userData.pdf_url + '" target="_blank" class="button button-primary" style="background:#0284c7; border-color:#0369a1; color:#fff; font-weight:700; padding:4px 14px; font-size:13px; display:inline-flex; align-items:center; gap:5px;">📄 এক ক্লিকে সম্পূর্ণ PDF এক্সপোর্ট (NID সহ)</a>');
+			} else {
+				$('#wru_view_profile_pdf_holder').empty();
+			}
+
+			$('#wru-view-reseller-modal').fadeIn(200);
+		});
+
 
 		/* ==========================================================================
 		   3. Product Edit Screen Price Label Renaming
