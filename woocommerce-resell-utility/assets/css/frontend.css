@@ -1079,3 +1079,17 @@
 	}
 }
 
+
+/* Reseller-only price notice */
+.wru-price-hidden {
+	display: inline-block;
+	font-size: 0.85em;
+	font-weight: 600;
+	color: #b45309;
+	line-height: 1.4;
+}
+
+.wru-price-hidden a {
+	color: #0284c7;
+	text-decoration: underline;
+}

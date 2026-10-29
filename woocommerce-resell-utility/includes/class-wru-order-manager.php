@@ -43,6 +43,7 @@ class WRU_Order_Manager {
 
 		// Calculate & store order-level reseller totals on order creation & status change.
 		add_action( 'woocommerce_checkout_order_processed', array( $this, 'calculate_order_reseller_totals' ), 10, 3 );
+		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'calculate_store_api_order_totals' ) );
 		add_action( 'woocommerce_order_status_changed', array( $this, 'on_order_status_changed' ), 10, 4 );
 
 		// Admin Order details Meta Box (Supports both HPOS and traditional CPT).
@@ -127,8 +128,8 @@ class WRU_Order_Manager {
 	 * @return array
 	 */
 	public function add_cart_item_data( $cart_item_data, $product_id, $variation_id ) {
-		if ( isset( $_POST['wru_reseller_price'] ) && '' !== trim( $_POST['wru_reseller_price'] ) ) {
-			$reseller_price = (float) sanitize_text_field( wp_unslash( $_POST['wru_reseller_price'] ) );
+		if ( isset( $_POST['wru_reseller_price'] ) && '' !== trim( wp_unslash( $_POST['wru_reseller_price'] ) ) ) {
+			$reseller_price = max( 0, (float) sanitize_text_field( wp_unslash( $_POST['wru_reseller_price'] ) ) );
 			$cart_item_data['wru_reseller_price'] = $reseller_price;
 			// Unique key prevents merging if same item added with different reseller prices.
 			$cart_item_data['wru_item_uid'] = md5( microtime() . wp_rand() );
@@ -359,6 +360,17 @@ class WRU_Order_Manager {
 		}
 
 		$order->save();
+	}
+
+	/**
+	 * Calculate reseller totals for orders placed through the Checkout block (Store API).
+	 *
+	 * @param \WC_Order $order Order object.
+	 */
+	public function calculate_store_api_order_totals( $order ) {
+		if ( $order instanceof \WC_Order ) {
+			$this->calculate_order_reseller_totals( $order->get_id(), array(), $order );
+		}
 	}
 
 	/**

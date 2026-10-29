@@ -4,7 +4,7 @@ Tags: woocommerce, dropshipping, reseller, resell utility, wholesale, courier, S
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,18 @@ Inside each WooCommerce Order edit screen, in the "ড্রপশিপিং �
 Yes! Logged-in resellers can visit **My Account → রিসেলার ড্যাশবোর্ড** to see their earnings, order history, and save their payout method.
 
 == Changelog ==
+
+= 2.1.0 =
+* Prices are now visible only to approved resellers and store managers (toggle in settings); guests and pending applicants see a login/approval notice and cannot add products to the cart.
+* Security: reseller status is no longer resolved from a submitted billing email (prevented impersonating a reseller).
+* Security: NID documents are stored in a private, randomly named upload folder and served only to store managers or their owner; existing files are migrated automatically.
+* Security: the reseller hub can no longer change roles of, or delete, administrator and shop manager accounts.
+* Security: cashout delete/approve/reject now act only on cashout requests (delete previously accepted any post ID).
+* Fix: printable invoice link in emails now works for the recipient; guest-order invoices require the order key.
+* Fix: cashout double-submit lock, payout method whitelist, captcha tokens expire after one hour.
+* Fix: reseller totals are calculated for Checkout block (Store API) orders.
+* Fix: user meta cleanup query no longer treats "_" as a LIKE wildcard.
+* Fix: admin-created reseller passwords are no longer altered by text sanitization.
 
 = 2.0.0 =
 * Major upgrade and rebranding to WooCommerce Resell Utility.

@@ -13,6 +13,13 @@ class WRU_Reseller_Manager {
 
 	const ROLE_RESELLER = 'wru_reseller';
 	const CPT_CASHOUT   = 'wru_cashout';
+	const NID_SUBDIR    = 'wru-private-nid';
+	const NID_MAX_SIZE  = 5242880; // 5MB.
+
+	/**
+	 * Allowed cashout / payout methods.
+	 */
+	const PAYOUT_METHODS = array( 'bkash_personal', 'bkash_agent', 'nagad_personal', 'rocket', 'bank' );
 
 	/**
 	 * Init class.
@@ -30,23 +37,9 @@ class WRU_Reseller_Manager {
 	 * @return bool
 	 */
 	public static function is_reseller( $user_id = 0 ) {
+		// Never resolve the user from a submitted email: anyone could type a reseller's address.
 		if ( ! $user_id ) {
 			$user_id = get_current_user_id();
-		}
-		if ( ! $user_id && ! empty( $_POST['billing_email'] ) ) {
-			$found_user = get_user_by( 'email', sanitize_email( wp_unslash( $_POST['billing_email'] ) ) );
-			if ( $found_user ) {
-				$user_id = $found_user->ID;
-			}
-		}
-		if ( ! $user_id && function_exists( 'WC' ) && isset( WC()->checkout ) && is_object( WC()->checkout ) ) {
-			$email = WC()->checkout()->get_value( 'billing_email' );
-			if ( ! empty( $email ) ) {
-				$found_user = get_user_by( 'email', sanitize_email( $email ) );
-				if ( $found_user ) {
-					$user_id = $found_user->ID;
-				}
-			}
 		}
 		if ( ! $user_id ) {
 			return false;
@@ -77,12 +70,6 @@ class WRU_Reseller_Manager {
 	public static function get_reseller_checkout_error_message( $user_id = 0 ) {
 		if ( ! $user_id ) {
 			$user_id = get_current_user_id();
-		}
-		if ( ! $user_id && ! empty( $_POST['billing_email'] ) ) {
-			$found_user = get_user_by( 'email', sanitize_email( wp_unslash( $_POST['billing_email'] ) ) );
-			if ( $found_user ) {
-				$user_id = $found_user->ID;
-			}
 		}
 
 		if ( ! $user_id ) {
@@ -126,6 +113,10 @@ class WRU_Reseller_Manager {
 		add_action( 'admin_post_wru_reject_reseller', array( $this, 'handle_reject_reseller' ) );
 		add_action( 'admin_post_wru_delete_applicant', array( $this, 'handle_delete_applicant' ) );
 		add_action( 'admin_post_wru_export_reseller_pdf', array( $this, 'handle_export_reseller_pdf' ) );
+		add_action( 'admin_post_wru_view_nid', array( $this, 'handle_view_nid' ) );
+
+		// Move NID files uploaded by older versions out of the public uploads folder.
+		add_action( 'admin_init', array( $this, 'maybe_migrate_nid_files' ) );
 
 		// Reseller Registration on WooCommerce My Account.
 		add_action( 'woocommerce_register_form_tag', array( $this, 'add_register_form_enctype' ) );
@@ -143,6 +134,201 @@ class WRU_Reseller_Manager {
 
 		// Frontend cashout request handler.
 		add_action( 'template_redirect', array( $this, 'handle_frontend_cashout_request' ) );
+	}
+
+	/**
+	 * Whether a user must never be modified or deleted from the reseller hub
+	 * (store admins/managers and the acting user themselves).
+	 *
+	 * @param int $user_id User ID.
+	 * @return bool
+	 */
+	public static function is_protected_user( $user_id ) {
+		$user_id = absint( $user_id );
+		return ! $user_id
+			|| get_current_user_id() === $user_id
+			|| user_can( $user_id, 'manage_options' )
+			|| user_can( $user_id, 'manage_woocommerce' );
+	}
+
+	/**
+	 * Absolute path of the private NID upload directory.
+	 *
+	 * @return string
+	 */
+	public static function get_nid_dir() {
+		$upload_dir = wp_upload_dir( null, false );
+		return trailingslashit( $upload_dir['basedir'] ) . self::NID_SUBDIR;
+	}
+
+	/**
+	 * Create the private NID directory and block direct web access to it.
+	 */
+	public static function protect_nid_dir() {
+		$dir = self::get_nid_dir();
+		if ( ! is_dir( $dir ) ) {
+			wp_mkdir_p( $dir );
+		}
+		if ( ! file_exists( $dir . '/.htaccess' ) ) {
+			@file_put_contents( $dir . '/.htaccess', "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n" );
+		}
+		if ( ! file_exists( $dir . '/index.php' ) ) {
+			@file_put_contents( $dir . '/index.php', "<?php\n// Silence is golden.\n" );
+		}
+	}
+
+	/**
+	 * Upload one NID document into the private directory under a random file name
+	 * and store it on the user.
+	 *
+	 * @param int    $user_id User ID.
+	 * @param string $side    'front' or 'back'.
+	 * @param array  $file    Single $_FILES entry.
+	 * @return true|\WP_Error
+	 */
+	public static function store_nid_upload( $user_id, $side, $file ) {
+		$side = ( 'back' === $side ) ? 'back' : 'front';
+
+		if ( empty( $file['name'] ) || ! empty( $file['error'] ) ) {
+			return new WP_Error( 'wru_nid_missing', __( 'NID ফাইল পাওয়া যায়নি।', 'woocommerce-resell-utility' ) );
+		}
+		if ( ! empty( $file['size'] ) && $file['size'] > self::NID_MAX_SIZE ) {
+			return new WP_Error( 'wru_nid_size', __( 'NID ফাইলের সাইজ সর্বোচ্চ ৫ মেগাবাইট (5MB) হতে পারবে।', 'woocommerce-resell-utility' ) );
+		}
+
+		if ( ! function_exists( 'wp_handle_upload' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+		}
+
+		self::protect_nid_dir();
+
+		$set_dir = function ( $dirs ) {
+			$dirs['subdir'] = '/' . self::NID_SUBDIR;
+			$dirs['path']   = $dirs['basedir'] . $dirs['subdir'];
+			$dirs['url']    = $dirs['baseurl'] . $dirs['subdir'];
+			return $dirs;
+		};
+
+		add_filter( 'upload_dir', $set_dir );
+		$upload = wp_handle_upload( $file, array(
+			'test_form'                => false,
+			'mimes'                    => array(
+				'jpg|jpeg|jpe' => 'image/jpeg',
+				'png'          => 'image/png',
+				'webp'         => 'image/webp',
+				'pdf'          => 'application/pdf',
+			),
+			'unique_filename_callback' => function ( $dir, $name, $ext ) {
+				return 'nid-' . wp_generate_password( 32, false ) . strtolower( $ext );
+			},
+		) );
+		remove_filter( 'upload_dir', $set_dir );
+
+		if ( isset( $upload['error'] ) || empty( $upload['file'] ) ) {
+			return new WP_Error( 'wru_nid_upload', isset( $upload['error'] ) ? $upload['error'] : __( 'NID আপলোড ব্যর্থ হয়েছে।', 'woocommerce-resell-utility' ) );
+		}
+
+		update_user_meta( $user_id, '_wru_nid_' . $side . '_url', $upload['url'] );
+		update_user_meta( $user_id, '_wru_nid_' . $side . '_file', $upload['file'] );
+		return true;
+	}
+
+	/**
+	 * Permission-checked URL for viewing a user's NID document.
+	 *
+	 * @param int    $user_id User ID.
+	 * @param string $side    'front' or 'back'.
+	 * @return string Empty when no document exists.
+	 */
+	public static function get_nid_view_url( $user_id, $side ) {
+		$side = ( 'back' === $side ) ? 'back' : 'front';
+		if ( ! get_user_meta( $user_id, '_wru_nid_' . $side . '_url', true ) ) {
+			return '';
+		}
+		return add_query_arg( array(
+			'action'  => 'wru_view_nid',
+			'user_id' => absint( $user_id ),
+			'side'    => $side,
+		), admin_url( 'admin-post.php' ) );
+	}
+
+	/**
+	 * Whether a user's NID document is a PDF.
+	 *
+	 * @param int    $user_id User ID.
+	 * @param string $side    'front' or 'back'.
+	 * @return bool
+	 */
+	public static function is_nid_pdf( $user_id, $side ) {
+		$side = ( 'back' === $side ) ? 'back' : 'front';
+		return (bool) preg_match( '/\.pdf$/i', (string) get_user_meta( $user_id, '_wru_nid_' . $side . '_url', true ) );
+	}
+
+	/**
+	 * Stream a NID document to the store manager or to its owner.
+	 */
+	public function handle_view_nid() {
+		$user_id = isset( $_GET['user_id'] ) ? absint( $_GET['user_id'] ) : 0;
+		$side    = ( isset( $_GET['side'] ) && 'back' === $_GET['side'] ) ? 'back' : 'front';
+
+		if ( ! $user_id || ( ! current_user_can( 'manage_woocommerce' ) && get_current_user_id() !== $user_id ) ) {
+			wp_die( esc_html__( 'অনুমতি নেই।', 'woocommerce-resell-utility' ), '', array( 'response' => 403 ) );
+		}
+
+		$file     = (string) get_user_meta( $user_id, '_wru_nid_' . $side . '_file', true );
+		$real     = $file ? realpath( $file ) : false;
+		$base_dir = realpath( wp_upload_dir( null, false )['basedir'] );
+
+		if ( ! $real || ! $base_dir || 0 !== strpos( wp_normalize_path( $real ), trailingslashit( wp_normalize_path( $base_dir ) ) ) || ! is_readable( $real ) ) {
+			wp_die( esc_html__( 'ডকুমেন্ট পাওয়া যায়নি।', 'woocommerce-resell-utility' ), '', array( 'response' => 404 ) );
+		}
+
+		$type = wp_check_filetype( $real );
+		if ( empty( $type['type'] ) || ! in_array( $type['type'], array( 'image/jpeg', 'image/png', 'image/webp', 'application/pdf' ), true ) ) {
+			wp_die( esc_html__( 'অসমর্থিত ফাইল।', 'woocommerce-resell-utility' ), '', array( 'response' => 415 ) );
+		}
+
+		nocache_headers();
+		header( 'Content-Type: ' . $type['type'] );
+		header( 'Content-Length: ' . filesize( $real ) );
+		header( 'Content-Disposition: inline; filename="nid-' . $side . '-' . $user_id . '.' . $type['ext'] . '"' );
+		header( 'X-Content-Type-Options: nosniff' );
+		readfile( $real );
+		exit;
+	}
+
+	/**
+	 * One-time move of NID files from the public uploads folder into the private directory.
+	 */
+	public function maybe_migrate_nid_files() {
+		if ( get_option( 'wru_nid_private_migrated' ) || ! current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+
+		self::protect_nid_dir();
+		$nid_dir = wp_normalize_path( self::get_nid_dir() );
+		$nid_url = trailingslashit( wp_upload_dir( null, false )['baseurl'] ) . self::NID_SUBDIR;
+
+		foreach ( array( 'front', 'back' ) as $side ) {
+			$user_ids = get_users( array(
+				'meta_key' => '_wru_nid_' . $side . '_file',
+				'fields'   => 'ID',
+			) );
+
+			foreach ( $user_ids as $uid ) {
+				$file = (string) get_user_meta( $uid, '_wru_nid_' . $side . '_file', true );
+				if ( ! $file || ! file_exists( $file ) || 0 === strpos( wp_normalize_path( $file ), $nid_dir ) ) {
+					continue;
+				}
+				$new_name = 'nid-' . wp_generate_password( 32, false ) . '.' . strtolower( pathinfo( $file, PATHINFO_EXTENSION ) );
+				if ( @rename( $file, $nid_dir . '/' . $new_name ) ) {
+					update_user_meta( $uid, '_wru_nid_' . $side . '_file', $nid_dir . '/' . $new_name );
+					update_user_meta( $uid, '_wru_nid_' . $side . '_url', $nid_url . '/' . $new_name );
+				}
+			}
+		}
+
+		update_option( 'wru_nid_private_migrated', 'yes', false );
 	}
 
 	/**
@@ -514,10 +700,28 @@ class WRU_Reseller_Manager {
 			return;
 		}
 
+		if ( ! in_array( $method, self::PAYOUT_METHODS, true ) ) {
+			wc_add_notice( __( 'সঠিক পেমেন্ট মাধ্যম নির্বাচন করুন।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+
+		// Lock against double submits: two parallel requests could both pass the balance check.
+		$lock = (int) get_user_meta( $user_id, '_wru_cashout_lock', true );
+		if ( $lock && $lock > time() - 30 ) {
+			wc_add_notice( __( 'আপনার আগের রিকোয়েস্টটি প্রসেস হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+		delete_user_meta( $user_id, '_wru_cashout_lock' );
+		if ( ! add_user_meta( $user_id, '_wru_cashout_lock', time(), true ) ) {
+			wc_add_notice( __( 'আপনার আগের রিকোয়েস্টটি প্রসেস হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+
 		$balance_data      = self::get_reseller_balance_data( $user_id );
 		$available_balance = $balance_data['available_balance'];
 
 		if ( $amount > $available_balance ) {
+			delete_user_meta( $user_id, '_wru_cashout_lock' );
 			wc_add_notice( sprintf(
 				__( 'আপনার একাউন্টে পর্যাপ্ত ব্যালেন্স নেই। সর্বোচ্চ উত্তোলনযোগ্য ব্যালেন্স: %s', 'woocommerce-resell-utility' ),
 				wc_price( $available_balance )
@@ -537,6 +741,7 @@ class WRU_Reseller_Manager {
 		) );
 
 		if ( is_wp_error( $cashout_id ) || ! $cashout_id ) {
+			delete_user_meta( $user_id, '_wru_cashout_lock' );
 			wc_add_notice( __( 'ক্যাশআউট রিকোয়েস্ট তৈরি করা সম্ভব হয়নি। পুনরায় চেষ্টা করুন।', 'woocommerce-resell-utility' ), 'error' );
 			return;
 		}
@@ -547,6 +752,7 @@ class WRU_Reseller_Manager {
 		update_post_meta( $cashout_id, '_wru_payout_method', $method );
 		update_post_meta( $cashout_id, '_wru_payout_number', $number );
 		update_post_meta( $cashout_id, '_wru_payout_notes', $notes );
+		delete_user_meta( $user_id, '_wru_cashout_lock' );
 
 		// Update user default payout details for next time
 		update_user_meta( $user_id, '_wru_payout_method', $method );
@@ -579,6 +785,17 @@ class WRU_Reseller_Manager {
 	}
 
 	/**
+	 * Whether a post ID is a cashout request still awaiting a decision.
+	 *
+	 * @param int $cashout_id Post ID.
+	 * @return bool
+	 */
+	public static function is_pending_cashout( $cashout_id ) {
+		$post = $cashout_id ? get_post( $cashout_id ) : null;
+		return $post && self::CPT_CASHOUT === $post->post_type && 'pending' === $post->post_status;
+	}
+
+	/**
 	 * Handle admin approving cashout (sending money & entering TrxID).
 	 */
 	public function handle_approve_cashout() {
@@ -592,7 +809,7 @@ class WRU_Reseller_Manager {
 		$trx_id     = isset( $_POST['wru_trx_id'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_trx_id'] ) ) : '';
 		$admin_note = isset( $_POST['wru_admin_note'] ) ? sanitize_textarea_field( wp_unslash( $_POST['wru_admin_note'] ) ) : '';
 
-		if ( ! $cashout_id ) {
+		if ( ! self::is_pending_cashout( $cashout_id ) ) {
 			wp_safe_redirect( add_query_arg( array( 'page' => 'wru-resellers', 'tab' => 'cashouts' ), admin_url( 'admin.php' ) ) );
 			exit;
 		}
@@ -651,7 +868,7 @@ class WRU_Reseller_Manager {
 		$cashout_id = isset( $_POST['cashout_id'] ) ? absint( $_POST['cashout_id'] ) : 0;
 		$reason     = isset( $_POST['rejection_reason'] ) ? sanitize_textarea_field( wp_unslash( $_POST['rejection_reason'] ) ) : '';
 
-		if ( ! $cashout_id ) {
+		if ( ! self::is_pending_cashout( $cashout_id ) ) {
 			wp_safe_redirect( add_query_arg( array( 'page' => 'wru-resellers', 'tab' => 'cashouts' ), admin_url( 'admin.php' ) ) );
 			exit;
 		}
@@ -698,6 +915,10 @@ class WRU_Reseller_Manager {
 
 		$user_id = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
 
+		if ( self::is_protected_user( $user_id ) ) {
+			wp_die( esc_html__( 'অ্যাডমিন বা স্টোর ম্যানেজার একাউন্টের রোল পরিবর্তন করা সম্ভব নয়।', 'woocommerce-resell-utility' ) );
+		}
+
 		if ( $user_id ) {
 			$user = get_userdata( $user_id );
 			if ( $user ) {
@@ -730,6 +951,10 @@ class WRU_Reseller_Manager {
 		if ( ! $user_id ) {
 			wp_safe_redirect( add_query_arg( array( 'page' => 'wru-resellers', 'tab' => 'pending_resellers' ), admin_url( 'admin.php' ) ) );
 			exit;
+		}
+
+		if ( self::is_protected_user( $user_id ) ) {
+			wp_die( esc_html__( 'অ্যাডমিন বা স্টোর ম্যানেজার একাউন্টের রোল পরিবর্তন করা সম্ভব নয়।', 'woocommerce-resell-utility' ) );
 		}
 
 		$user = get_userdata( $user_id );
@@ -778,6 +1003,10 @@ class WRU_Reseller_Manager {
 			exit;
 		}
 
+		if ( self::is_protected_user( $user_id ) ) {
+			wp_die( esc_html__( 'অ্যাডমিন বা স্টোর ম্যানেজার একাউন্টের রোল পরিবর্তন করা সম্ভব নয়।', 'woocommerce-resell-utility' ) );
+		}
+
 		$user = get_userdata( $user_id );
 		if ( $user ) {
 			// Revoke reseller role if present
@@ -823,7 +1052,8 @@ class WRU_Reseller_Manager {
 		$phone      = isset( $_POST['reseller_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['reseller_phone'] ) ) : '';
 		$wa         = isset( $_POST['reseller_whatsapp'] ) ? sanitize_text_field( wp_unslash( $_POST['reseller_whatsapp'] ) ) : '';
 		$store_url  = isset( $_POST['reseller_store_url'] ) ? esc_url_raw( wp_unslash( $_POST['reseller_store_url'] ) ) : '';
-		$password   = isset( $_POST['reseller_password'] ) ? sanitize_text_field( wp_unslash( $_POST['reseller_password'] ) ) : '';
+		// Passwords are hashed, never output: sanitizing would silently alter characters like "<".
+		$password   = isset( $_POST['reseller_password'] ) ? (string) wp_unslash( $_POST['reseller_password'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 
 		if ( empty( $username ) || empty( $email ) || empty( $password ) ) {
 			wp_safe_redirect( add_query_arg( array( 'page' => 'wru-resellers', 'tab' => 'add_reseller', 'message' => 'missing_fields' ), admin_url( 'admin.php' ) ) );
@@ -862,33 +1092,11 @@ class WRU_Reseller_Manager {
 		}
 
 		// Handle NID Document Uploads (if admin attached them)
-		if ( ! function_exists( 'wp_handle_upload' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
+		if ( ! empty( $_FILES['reseller_nid_front']['name'] ) ) {
+			self::store_nid_upload( $user_id, 'front', $_FILES['reseller_nid_front'] );
 		}
-		$upload_overrides = array(
-			'test_form' => false,
-			'mimes'     => array(
-				'jpg|jpeg|jpe' => 'image/jpeg',
-				'png'          => 'image/png',
-				'webp'         => 'image/webp',
-				'pdf'          => 'application/pdf',
-			),
-		);
-
-		if ( ! empty( $_FILES['reseller_nid_front']['name'] ) && empty( $_FILES['reseller_nid_front']['error'] ) ) {
-			$upload_front = wp_handle_upload( $_FILES['reseller_nid_front'], $upload_overrides );
-			if ( ! empty( $upload_front['url'] ) ) {
-				update_user_meta( $user_id, '_wru_nid_front_url', $upload_front['url'] );
-				update_user_meta( $user_id, '_wru_nid_front_file', $upload_front['file'] );
-			}
-		}
-
-		if ( ! empty( $_FILES['reseller_nid_back']['name'] ) && empty( $_FILES['reseller_nid_back']['error'] ) ) {
-			$upload_back = wp_handle_upload( $_FILES['reseller_nid_back'], $upload_overrides );
-			if ( ! empty( $upload_back['url'] ) ) {
-				update_user_meta( $user_id, '_wru_nid_back_url', $upload_back['url'] );
-				update_user_meta( $user_id, '_wru_nid_back_file', $upload_back['file'] );
-			}
+		if ( ! empty( $_FILES['reseller_nid_back']['name'] ) ) {
+			self::store_nid_upload( $user_id, 'back', $_FILES['reseller_nid_back'] );
 		}
 
 		update_user_meta( $user_id, '_wru_reseller_status', 'approved' );
@@ -916,7 +1124,7 @@ class WRU_Reseller_Manager {
 		$reseller_id   = isset( $_POST['reseller_id'] ) ? (int) $_POST['reseller_id'] : 0;
 		$delete_orders = isset( $_POST['delete_orders'] ) && 'yes' === $_POST['delete_orders'];
 
-		if ( $reseller_id <= 1 ) {
+		if ( $reseller_id <= 1 || self::is_protected_user( $reseller_id ) ) {
 			wp_die( esc_html__( 'অবৈধ ইউজার বা অ্যাডমিন একাউন্ট ডিলিট করা সম্ভব নয়।', 'woocommerce-resell-utility' ) );
 		}
 
@@ -958,7 +1166,7 @@ class WRU_Reseller_Manager {
 
 		$applicant_id = isset( $_POST['applicant_id'] ) ? (int) $_POST['applicant_id'] : ( isset( $_POST['user_id'] ) ? (int) $_POST['user_id'] : 0 );
 
-		if ( $applicant_id <= 1 ) {
+		if ( $applicant_id <= 1 || self::is_protected_user( $applicant_id ) ) {
 			wp_die( esc_html__( 'অবৈধ আবেদনকারী বা অ্যাডমিন একাউন্ট ডিলিট করা সম্ভব নয়।', 'woocommerce-resell-utility' ) );
 		}
 
@@ -987,8 +1195,9 @@ class WRU_Reseller_Manager {
 
 		check_admin_referer( 'wru_delete_cashout_action', 'wru_nonce' );
 
-		$cashout_id = isset( $_POST['cashout_id'] ) ? (int) $_POST['cashout_id'] : 0;
-		if ( $cashout_id > 0 ) {
+		$cashout_id = isset( $_POST['cashout_id'] ) ? absint( $_POST['cashout_id'] ) : 0;
+		// Only ever delete cashout records, never an arbitrary post ID.
+		if ( $cashout_id && self::CPT_CASHOUT === get_post_type( $cashout_id ) ) {
 			wp_delete_post( $cashout_id, true );
 		}
 
@@ -1062,7 +1271,9 @@ class WRU_Reseller_Manager {
 
 		// 4. Clean all _wru_ usermeta entries
 		global $wpdb;
-		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key LIKE %s", $user_id, '_wru_%' ) );
+		// "_" is a LIKE wildcard, so escape the prefix or unrelated keys like "xwru_..." would match.
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key LIKE %s", $user_id, $wpdb->esc_like( '_wru_' ) . '%' ) );
+		wp_cache_delete( $user_id, 'user_meta' );
 	}
 
 	/**
@@ -1123,8 +1334,10 @@ class WRU_Reseller_Manager {
 		$phone         = get_user_meta( $user_id, '_wru_reseller_phone', true ) ?: get_user_meta( $user_id, 'billing_phone', true );
 		$store_url     = get_user_meta( $user_id, '_wru_reseller_store_url', true );
 		$wa            = get_user_meta( $user_id, '_wru_reseller_whatsapp', true );
-		$nid_front      = get_user_meta( $user_id, '_wru_nid_front_url', true );
-		$nid_back       = get_user_meta( $user_id, '_wru_nid_back_url', true );
+		$nid_front      = self::get_nid_view_url( $user_id, 'front' );
+		$nid_back       = self::get_nid_view_url( $user_id, 'back' );
+		$nid_front_pdf  = self::is_nid_pdf( $user_id, 'front' );
+		$nid_back_pdf   = self::is_nid_pdf( $user_id, 'back' );
 		$nid_front_file = get_user_meta( $user_id, '_wru_nid_front_file', true );
 		$nid_back_file  = get_user_meta( $user_id, '_wru_nid_back_file', true );
 
@@ -1458,7 +1671,7 @@ class WRU_Reseller_Manager {
 					<div class="nid-card">
 						<h4><?php esc_html_e( 'NID কার্ডের সামনের অংশ (Front)', 'woocommerce-resell-utility' ); ?></h4>
 						<?php if ( ! empty( $nid_front_src ) ) : ?>
-							<?php if ( preg_match( '/\.(pdf)$/i', $nid_front ) ) : ?>
+							<?php if ( $nid_front_pdf ) : ?>
 								<p><a href="<?php echo esc_url( $nid_front ); ?>" target="_blank" class="button"><?php esc_html_e( 'View / Download PDF Document', 'woocommerce-resell-utility' ); ?></a></p>
 							<?php else : ?>
 								<img src="<?php echo esc_attr( $nid_front_src ); ?>" alt="NID Front" style="max-width:100%; max-height:220px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />
@@ -1470,7 +1683,7 @@ class WRU_Reseller_Manager {
 					<div class="nid-card">
 						<h4><?php esc_html_e( 'NID কার্ডের পেছনের অংশ (Back)', 'woocommerce-resell-utility' ); ?></h4>
 						<?php if ( ! empty( $nid_back_src ) ) : ?>
-							<?php if ( preg_match( '/\.(pdf)$/i', $nid_back ) ) : ?>
+							<?php if ( $nid_back_pdf ) : ?>
 								<p><a href="<?php echo esc_url( $nid_back ); ?>" target="_blank" class="button"><?php esc_html_e( 'View / Download PDF Document', 'woocommerce-resell-utility' ); ?></a></p>
 							<?php else : ?>
 								<img src="<?php echo esc_attr( $nid_back_src ); ?>" alt="NID Back" style="max-width:100%; max-height:220px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />
@@ -1527,7 +1740,11 @@ class WRU_Reseller_Manager {
 			wp_send_json_error( array( 'message' => __( 'ইউজার পাওয়া যায়নি।', 'woocommerce-resell-utility' ) ) );
 		}
 
-		$user         = get_userdata( $user_id );
+		$user = get_userdata( $user_id );
+		if ( ! $user ) {
+			wp_send_json_error( array( 'message' => __( 'ইউজার পাওয়া যায়নি।', 'woocommerce-resell-utility' ) ) );
+		}
+
 		$balance_data = self::get_reseller_balance_data( $user_id );
 		$ledger       = self::get_ledger( $user_id );
 
@@ -1601,8 +1818,8 @@ class WRU_Reseller_Manager {
 		$phone        = get_user_meta( $user_id, '_wru_reseller_phone', true ) ?: get_user_meta( $user_id, 'billing_phone', true );
 		$wa           = get_user_meta( $user_id, '_wru_reseller_whatsapp', true );
 		$store_url    = get_user_meta( $user_id, '_wru_reseller_store_url', true );
-		$nid_front    = get_user_meta( $user_id, '_wru_nid_front_url', true );
-		$nid_back     = get_user_meta( $user_id, '_wru_nid_back_url', true );
+		$nid_front    = self::get_nid_view_url( $user_id, 'front' );
+		$nid_back     = self::get_nid_view_url( $user_id, 'back' );
 		$status       = get_user_meta( $user_id, '_wru_reseller_status', true ) ?: ( in_array( self::ROLE_RESELLER, (array) $user->roles, true ) ? 'approved' : 'pending' );
 		$p_method     = get_user_meta( $user_id, '_wru_payout_method', true );
 		$p_number     = get_user_meta( $user_id, '_wru_payout_number', true );
@@ -1622,6 +1839,8 @@ class WRU_Reseller_Manager {
 			'store_url'    => (string) $store_url,
 			'nid_front'    => (string) $nid_front,
 			'nid_back'     => (string) $nid_back,
+			'nid_front_pdf' => self::is_nid_pdf( $user_id, 'front' ),
+			'nid_back_pdf'  => self::is_nid_pdf( $user_id, 'back' ),
 			'registered'   => date_i18n( 'd M Y, h:i A', strtotime( $user->user_registered ) ),
 			'applied_at'   => date_i18n( 'd M Y, h:i A', strtotime( $applied_at ) ),
 			'orders_count' => (int) $balance_data['orders_count'],
@@ -2288,7 +2507,7 @@ class WRU_Reseller_Manager {
 	private function render_add_reseller_tab() {
 		// Fetch existing customers who are not yet resellers
 		$customers = get_users( array(
-			'role__not_in' => array( self::ROLE_RESELLER ),
+			'role__not_in' => array( self::ROLE_RESELLER, 'administrator', 'shop_manager' ),
 			'number'       => 50,
 			'orderby'      => 'registered',
 			'order'        => 'DESC',
@@ -2431,8 +2650,8 @@ class WRU_Reseller_Manager {
 							$phone      = get_user_meta( $uid, '_wru_reseller_phone', true ) ?: get_user_meta( $uid, 'billing_phone', true );
 							$store_url  = get_user_meta( $uid, '_wru_reseller_store_url', true );
 							$wa         = get_user_meta( $uid, '_wru_reseller_whatsapp', true );
-							$nid_front  = get_user_meta( $uid, '_wru_nid_front_url', true );
-							$nid_back   = get_user_meta( $uid, '_wru_nid_back_url', true );
+							$nid_front  = self::get_nid_view_url( $uid, 'front' );
+							$nid_back   = self::get_nid_view_url( $uid, 'back' );
 							$applied_at = get_user_meta( $uid, '_wru_reseller_applied_at', true ) ?: $app->user_registered;
 							$rej_reason = get_user_meta( $uid, '_wru_reseller_rejection_reason', true );
 
@@ -2495,7 +2714,7 @@ class WRU_Reseller_Manager {
 										<!-- NID Front -->
 										<div style="text-align:center;">
 											<?php if ( ! empty( $nid_front ) ) : ?>
-												<?php if ( preg_match( '/\.(pdf)$/i', $nid_front ) ) : ?>
+												<?php if ( self::is_nid_pdf( $uid, 'front' ) ) : ?>
 													<a href="<?php echo esc_url( $nid_front ); ?>" target="_blank" class="button button-small" style="font-size:11px;">
 														<?php esc_html_e( 'NID Front (PDF)', 'woocommerce-resell-utility' ); ?>
 													</a>
@@ -2512,7 +2731,7 @@ class WRU_Reseller_Manager {
 										<!-- NID Back -->
 										<div style="text-align:center;">
 											<?php if ( ! empty( $nid_back ) ) : ?>
-												<?php if ( preg_match( '/\.(pdf)$/i', $nid_back ) ) : ?>
+												<?php if ( self::is_nid_pdf( $uid, 'back' ) ) : ?>
 													<a href="<?php echo esc_url( $nid_back ); ?>" target="_blank" class="button button-small" style="font-size:11px;">
 														<?php esc_html_e( 'NID Back (PDF)', 'woocommerce-resell-utility' ); ?>
 													</a>
@@ -2653,7 +2872,8 @@ class WRU_Reseller_Manager {
 			$captcha_n1    = wp_rand( 2, 9 );
 			$captcha_n2    = wp_rand( 1, 9 );
 			$captcha_sum   = $captcha_n1 + $captcha_n2;
-			$captcha_token = wp_hash( (string) $captcha_sum . '|wru_reg_math_salt' );
+			$captcha_time  = time();
+			$captcha_token = wp_hash( (string) $captcha_sum . '|' . $captcha_time . '|wru_reg_math_salt' );
 			?>
 			<div class="woocommerce-form-row woocommerce-form-row--wide form-row form-row-wide" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:12px 14px; margin-top:8px; margin-bottom:12px;">
 				<label for="wru_reg_captcha" style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:8px; margin-bottom:6px;">
@@ -2662,6 +2882,7 @@ class WRU_Reseller_Manager {
 					<span class="required">*</span>
 				</label>
 				<input type="hidden" name="wru_reg_captcha_token" value="<?php echo esc_attr( $captcha_token ); ?>" />
+				<input type="hidden" name="wru_reg_captcha_time" value="<?php echo esc_attr( $captcha_time ); ?>" />
 				<input type="number" class="woocommerce-Input woocommerce-Input--text input-text" name="wru_reg_captcha" id="wru_reg_captcha" placeholder="<?php esc_attr_e( 'উত্তর লিখুন...', 'woocommerce-resell-utility' ); ?>" required style="max-width:140px; font-weight:700;" />
 				<small style="color:#64748b; font-size:11px; display:block; margin-top:4px;"><?php esc_html_e( 'স্প্যামার ও রোবট রোধে সহজ গাণিতিক প্রশ্নের সঠিক উত্তর দিন।', 'woocommerce-resell-utility' ); ?></small>
 			</div>
@@ -2708,12 +2929,14 @@ class WRU_Reseller_Manager {
 		// Validate anti-spam math captcha
 		$submitted_ans   = isset( $_POST['wru_reg_captcha'] ) ? trim( (string) $_POST['wru_reg_captcha'] ) : '';
 		$submitted_token = isset( $_POST['wru_reg_captcha_token'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reg_captcha_token'] ) ) : '';
+		$submitted_time  = isset( $_POST['wru_reg_captcha_time'] ) ? absint( $_POST['wru_reg_captcha_time'] ) : 0;
 
 		if ( '' === $submitted_ans || empty( $submitted_token ) ) {
 			$errors->add( 'wru_reg_captcha_empty', __( 'অনুগ্রহ করে স্প্যাম নিরাপত্তা গণিতের উত্তর প্রদান করুন।', 'woocommerce-resell-utility' ) );
 		} else {
-			$expected_hash = wp_hash( $submitted_ans . '|wru_reg_math_salt' );
-			if ( ! hash_equals( $expected_hash, $submitted_token ) ) {
+			$expected_hash = wp_hash( $submitted_ans . '|' . $submitted_time . '|wru_reg_math_salt' );
+			// Tokens expire after one hour so a solved pair cannot be replayed forever.
+			if ( ! hash_equals( $expected_hash, $submitted_token ) || $submitted_time < time() - HOUR_IN_SECONDS ) {
 				$errors->add( 'wru_reg_captcha_invalid', __( 'স্প্যাম নিরাপত্তা গণিতের উত্তর ভুল হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ) );
 			}
 		}
@@ -2765,39 +2988,12 @@ class WRU_Reseller_Manager {
 			return;
 		}
 
-		if ( ! function_exists( 'wp_handle_upload' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
+		// Upload NID front & back into the private directory
+		if ( ! empty( $_FILES['wru_reg_nid_front']['name'] ) ) {
+			self::store_nid_upload( $customer_id, 'front', $_FILES['wru_reg_nid_front'] );
 		}
-		if ( ! function_exists( 'wp_read_image_metadata' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/image.php';
-		}
-
-		$upload_overrides = array(
-			'test_form' => false,
-			'mimes'     => array(
-				'jpg|jpeg|jpe' => 'image/jpeg',
-				'png'          => 'image/png',
-				'webp'         => 'image/webp',
-				'pdf'          => 'application/pdf',
-			),
-		);
-
-		// Upload NID front
-		if ( ! empty( $_FILES['wru_reg_nid_front']['name'] ) && empty( $_FILES['wru_reg_nid_front']['error'] ) ) {
-			$upload_front = wp_handle_upload( $_FILES['wru_reg_nid_front'], $upload_overrides );
-			if ( ! isset( $upload_front['error'] ) && isset( $upload_front['url'] ) ) {
-				update_user_meta( $customer_id, '_wru_nid_front_url', $upload_front['url'] );
-				update_user_meta( $customer_id, '_wru_nid_front_file', $upload_front['file'] );
-			}
-		}
-
-		// Upload NID back
-		if ( ! empty( $_FILES['wru_reg_nid_back']['name'] ) && empty( $_FILES['wru_reg_nid_back']['error'] ) ) {
-			$upload_back = wp_handle_upload( $_FILES['wru_reg_nid_back'], $upload_overrides );
-			if ( ! isset( $upload_back['error'] ) && isset( $upload_back['url'] ) ) {
-				update_user_meta( $customer_id, '_wru_nid_back_url', $upload_back['url'] );
-				update_user_meta( $customer_id, '_wru_nid_back_file', $upload_back['file'] );
-			}
+		if ( ! empty( $_FILES['wru_reg_nid_back']['name'] ) ) {
+			self::store_nid_upload( $customer_id, 'back', $_FILES['wru_reg_nid_back'] );
 		}
 
 		$phone   = isset( $_POST['wru_reg_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reg_phone'] ) ) : '';

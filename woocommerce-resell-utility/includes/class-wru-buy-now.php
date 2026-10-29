@@ -52,6 +52,10 @@ class WRU_Buy_Now {
 	 * Render Buy Now button on Single Product page.
 	 */
 	public function render_single_buy_now_button() {
+		if ( ! WRU_Price_Display::can_view_prices() ) {
+			return;
+		}
+
 		global $product;
 		$product_id = is_a( $product, 'WC_Product' ) ? $product->get_id() : 0;
 		?>
@@ -98,7 +102,7 @@ class WRU_Buy_Now {
 	 * @return string
 	 */
 	public function filter_loop_add_to_cart_link( $html, $product, $args = array() ) {
-		if ( ! WRU_Settings::is_shop_buy_now_enabled() || ! is_a( $product, 'WC_Product' ) ) {
+		if ( ! WRU_Settings::is_shop_buy_now_enabled() || ! is_a( $product, 'WC_Product' ) || ! WRU_Price_Display::can_view_prices() ) {
 			return $html;
 		}
 
@@ -135,7 +139,7 @@ class WRU_Buy_Now {
 	 * Render Quick Buy Modal in footer for shop page interactions.
 	 */
 	public function render_quick_buy_modal() {
-		if ( ! is_shop() && ! is_product_taxonomy() && ! is_front_page() ) {
+		if ( ( ! is_shop() && ! is_product_taxonomy() && ! is_front_page() ) || ! WRU_Price_Display::can_view_prices() ) {
 			return;
 		}
 
@@ -221,6 +225,14 @@ class WRU_Buy_Now {
 			wp_send_json_error( array( 'message' => __( 'পণ্য পাওয়া যায়নি।', 'woocommerce-resell-utility' ) ) );
 		}
 
+		if ( ! WRU_Price_Display::can_view_prices() ) {
+			wp_send_json_error( array( 'message' => __( 'শুধুমাত্র অনুমোদিত রিসেলারগণ অর্ডার করতে পারবেন।', 'woocommerce-resell-utility' ) ) );
+		}
+
+		if ( $reseller_price <= 0 ) {
+			wp_send_json_error( array( 'message' => __( 'দয়া করে সঠিক বিক্রয়মূল্য লিখুন।', 'woocommerce-resell-utility' ) ) );
+		}
+
 		$product = wc_get_product( $product_id );
 		if ( ! $product || ! $product->is_purchasable() ) {
 			wp_send_json_error( array( 'message' => __( 'পণ্যটি ক্রয়যোগ্য নয়।', 'woocommerce-resell-utility' ) ) );
@@ -236,7 +248,12 @@ class WRU_Buy_Now {
 			'unique_key'         => md5( microtime() . wp_rand() ),
 		);
 
-		WC()->cart->add_to_cart( $product_id, $quantity, 0, array(), $cart_item_data );
+		if ( ! WC()->cart->add_to_cart( $product_id, $quantity, 0, array(), $cart_item_data ) ) {
+			$notices = wc_get_notices( 'error' );
+			wc_clear_notices();
+			$message = ! empty( $notices ) ? wp_strip_all_tags( is_array( $notices[0] ) ? $notices[0]['notice'] : $notices[0] ) : __( 'পণ্যটি কার্টে যোগ করা সম্ভব হয়নি।', 'woocommerce-resell-utility' );
+			wp_send_json_error( array( 'message' => $message ) );
+		}
 
 		wp_send_json_success( array(
 			'redirect_url' => wc_get_checkout_url(),

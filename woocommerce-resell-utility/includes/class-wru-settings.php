@@ -21,6 +21,16 @@ class WRU_Settings {
 	const OPTION_CANCELLATION_FEE    = 'wru_cancellation_fee';
 	const OPTION_MARKET_LABEL        = 'wru_market_price_label';
 	const OPTION_RESELLER_LABEL      = 'wru_reseller_price_label';
+	const OPTION_HIDE_PRICES         = 'wru_hide_prices_for_non_resellers';
+
+	/**
+	 * Check if product prices are hidden from everyone except approved resellers & store managers.
+	 *
+	 * @return bool
+	 */
+	public static function are_prices_hidden() {
+		return 'yes' === get_option( self::OPTION_HIDE_PRICES, 'yes' );
+	}
 
 	/**
 	 * Get packaging fee amount.

@@ -120,13 +120,24 @@ class WRU_Reseller_Dashboard {
 			return;
 		}
 
-		$user_id   = get_current_user_id();
+		$user_id = get_current_user_id();
+
+		// Only resellers and reseller applicants have a payout profile; ordinary customers must not upload files.
+		if ( ! WRU_Reseller_Manager::is_reseller( $user_id ) && ! get_user_meta( $user_id, '_wru_reseller_status', true ) ) {
+			wc_add_notice( __( 'শুধুমাত্র নিবন্ধিত রিসেলারগণ এই তথ্য সংরক্ষণ করতে পারবেন।', 'woocommerce-resell-utility' ), 'error' );
+			return;
+		}
+
+		$method = isset( $_POST['wru_payout_method'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_method'] ) ) : '';
+		if ( ! in_array( $method, WRU_Reseller_Manager::PAYOUT_METHODS, true ) ) {
+			$method = '';
+		}
+
 		$company   = isset( $_POST['wru_reseller_company_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_company_name'] ) ) : '';
 		$phone     = isset( $_POST['wru_reseller_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_phone'] ) ) : '';
 		$wa        = isset( $_POST['wru_reseller_whatsapp'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reseller_whatsapp'] ) ) : '';
 		$store_url = isset( $_POST['wru_reseller_store_url'] ) ? esc_url_raw( wp_unslash( $_POST['wru_reseller_store_url'] ) ) : '';
-		$method    = isset( $_POST['wru_payout_method'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_method'] ) ) : '';
-		$number    = isset( $_POST['wru_payout_number'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_number'] ) ) : '';
+		$number   = isset( $_POST['wru_payout_number'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_payout_number'] ) ) : '';
 		$notes     = isset( $_POST['wru_payout_notes'] ) ? sanitize_textarea_field( wp_unslash( $_POST['wru_payout_notes'] ) ) : '';
 
 		if ( ! empty( $company ) ) {
@@ -154,32 +165,13 @@ class WRU_Reseller_Dashboard {
 		$nid_already_exists = ! empty( $existing_nid_front ) && ! empty( $existing_nid_back );
 
 		if ( ! $nid_already_exists ) {
-			if ( ! function_exists( 'wp_handle_upload' ) ) {
-				require_once ABSPATH . 'wp-admin/includes/file.php';
-			}
-			$upload_overrides = array(
-				'test_form' => false,
-				'mimes'     => array(
-					'jpg|jpeg|jpe' => 'image/jpeg',
-					'png'          => 'image/png',
-					'webp'         => 'image/webp',
-					'pdf'          => 'application/pdf',
-				),
-			);
-
-			if ( ! empty( $_FILES['wru_reseller_nid_front']['name'] ) && empty( $_FILES['wru_reseller_nid_front']['error'] ) ) {
-				$upload_front = wp_handle_upload( $_FILES['wru_reseller_nid_front'], $upload_overrides );
-				if ( ! empty( $upload_front['url'] ) ) {
-					update_user_meta( $user_id, '_wru_nid_front_url', $upload_front['url'] );
-					update_user_meta( $user_id, '_wru_nid_front_file', $upload_front['file'] );
-				}
-			}
-
-			if ( ! empty( $_FILES['wru_reseller_nid_back']['name'] ) && empty( $_FILES['wru_reseller_nid_back']['error'] ) ) {
-				$upload_back = wp_handle_upload( $_FILES['wru_reseller_nid_back'], $upload_overrides );
-				if ( ! empty( $upload_back['url'] ) ) {
-					update_user_meta( $user_id, '_wru_nid_back_url', $upload_back['url'] );
-					update_user_meta( $user_id, '_wru_nid_back_file', $upload_back['file'] );
+			foreach ( array( 'front', 'back' ) as $side ) {
+				$field = 'wru_reseller_nid_' . $side;
+				if ( ! empty( $_FILES[ $field ]['name'] ) && ! get_user_meta( $user_id, '_wru_nid_' . $side . '_url', true ) ) {
+					$result = WRU_Reseller_Manager::store_nid_upload( $user_id, $side, $_FILES[ $field ] );
+					if ( is_wp_error( $result ) ) {
+						wc_add_notice( $result->get_error_message(), 'error' );
+					}
 				}
 			}
 		}
@@ -501,8 +493,8 @@ class WRU_Reseller_Dashboard {
 		$reseller_phone     = get_user_meta( $user_id, '_wru_reseller_phone', true );
 		$reseller_wa        = get_user_meta( $user_id, '_wru_reseller_whatsapp', true );
 		$reseller_store_url = get_user_meta( $user_id, '_wru_reseller_store_url', true );
-		$reseller_nid_front = get_user_meta( $user_id, '_wru_nid_front_url', true );
-		$reseller_nid_back  = get_user_meta( $user_id, '_wru_nid_back_url', true );
+		$reseller_nid_front = WRU_Reseller_Manager::get_nid_view_url( $user_id, 'front' );
+		$reseller_nid_back  = WRU_Reseller_Manager::get_nid_view_url( $user_id, 'back' );
 		$payout_method      = get_user_meta( $user_id, '_wru_payout_method', true );
 		$payout_number      = get_user_meta( $user_id, '_wru_payout_number', true );
 		$payout_notes       = get_user_meta( $user_id, '_wru_payout_notes', true );
@@ -802,7 +794,7 @@ class WRU_Reseller_Dashboard {
 									<label style="font-weight:600; font-size:13px; display:block; margin-bottom:6px;">
 										<?php esc_html_e( 'NID সামনের অংশ (Front)', 'woocommerce-resell-utility' ); ?>
 									</label>
-									<?php if ( preg_match( '/\.(pdf)$/i', $reseller_nid_front ) ) : ?>
+									<?php if ( WRU_Reseller_Manager::is_nid_pdf( $user_id, 'front' ) ) : ?>
 										<a href="<?php echo esc_url( $reseller_nid_front ); ?>" target="_blank" style="color:#0284c7; font-weight:600;"><?php esc_html_e( 'PDF ডকুমেন্ট দেখুন', 'woocommerce-resell-utility' ); ?></a>
 									<?php else : ?>
 										<img src="<?php echo esc_url( $reseller_nid_front ); ?>" alt="NID Front" style="max-width:100%; max-height:150px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />
@@ -812,7 +804,7 @@ class WRU_Reseller_Dashboard {
 									<label style="font-weight:600; font-size:13px; display:block; margin-bottom:6px;">
 										<?php esc_html_e( 'NID পেছনের অংশ (Back)', 'woocommerce-resell-utility' ); ?>
 									</label>
-									<?php if ( preg_match( '/\.(pdf)$/i', $reseller_nid_back ) ) : ?>
+									<?php if ( WRU_Reseller_Manager::is_nid_pdf( $user_id, 'back' ) ) : ?>
 										<a href="<?php echo esc_url( $reseller_nid_back ); ?>" target="_blank" style="color:#0284c7; font-weight:600;"><?php esc_html_e( 'PDF ডকুমেন্ট দেখুন', 'woocommerce-resell-utility' ); ?></a>
 									<?php else : ?>
 										<img src="<?php echo esc_url( $reseller_nid_back ); ?>" alt="NID Back" style="max-width:100%; max-height:150px; object-fit:contain; border-radius:6px; border:1px solid #cbd5e1;" />

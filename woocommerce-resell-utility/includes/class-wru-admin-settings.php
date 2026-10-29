@@ -92,7 +92,8 @@ class WRU_Admin_Settings {
 		$shop_buy    = isset( $_POST[ WRU_Settings::OPTION_ENABLE_SHOP_BUY_NOW ] ) ? 'yes' : 'no';
 		$tools       = isset( $_POST[ WRU_Settings::OPTION_ENABLE_TOOLS ] ) ? 'yes' : 'no';
 		$dashboard   = isset( $_POST[ WRU_Settings::OPTION_ENABLE_DASHBOARD ] ) ? 'yes' : 'no';
-		$cancel_fee  = isset( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ? (float) sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ) : 10.0;
+		$hide_prices = isset( $_POST[ WRU_Settings::OPTION_HIDE_PRICES ] ) ? 'yes' : 'no';
+		$cancel_fee = isset( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ? (float) sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ) : 10.0;
 		$market_lbl  = isset( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ) : '';
 		$resell_lbl  = isset( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ) : '';
 		$inv_store   = isset( $_POST['wru_invoice_store_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_invoice_store_name'] ) ) : '';
@@ -106,6 +107,7 @@ class WRU_Admin_Settings {
 		update_option( WRU_Settings::OPTION_ENABLE_SHOP_BUY_NOW, $shop_buy );
 		update_option( WRU_Settings::OPTION_ENABLE_TOOLS, $tools );
 		update_option( WRU_Settings::OPTION_ENABLE_DASHBOARD, $dashboard );
+		update_option( WRU_Settings::OPTION_HIDE_PRICES, $hide_prices );
 		update_option( WRU_Settings::OPTION_CANCELLATION_FEE, max( 0, $cancel_fee ) );
 		update_option( 'wru_invoice_store_name', $inv_store );
 		update_option( 'wru_invoice_store_phone', $inv_phone );
@@ -132,6 +134,7 @@ class WRU_Admin_Settings {
 		$shop_buy    = WRU_Settings::is_shop_buy_now_enabled();
 		$tools       = WRU_Settings::are_product_tools_enabled();
 		$dashboard   = WRU_Settings::is_dashboard_enabled();
+		$hide_prices = WRU_Settings::are_prices_hidden();
 		$cancel_fee  = WRU_Settings::get_cancellation_fee();
 		$market_lbl  = WRU_Settings::get_market_label();
 		$resell_lbl  = WRU_Settings::get_reseller_label();
@@ -319,6 +322,18 @@ class WRU_Admin_Settings {
 					<h2><?php esc_html_e( 'মূল্য প্রদর্শন লেবেল (Price Labels)', 'woocommerce-resell-utility' ); ?></h2>
 
 					<table class="form-table">
+						<tr>
+							<th scope="row">
+								<label for="wru_hide_prices_for_non_resellers"><?php esc_html_e( 'শুধু রিসেলারদের মূল্য দেখান', 'woocommerce-resell-utility' ); ?></label>
+							</th>
+							<td>
+								<label>
+									<input type="checkbox" name="<?php echo esc_attr( WRU_Settings::OPTION_HIDE_PRICES ); ?>" id="wru_hide_prices_for_non_resellers" value="yes" <?php checked( $hide_prices, true ); ?> />
+									<strong><?php esc_html_e( 'রিসেলার রোল ছাড়া কেউ পণ্যের মূল্য দেখতে বা অর্ডার করতে পারবে না', 'woocommerce-resell-utility' ); ?></strong>
+								</label>
+								<p class="description"><?php esc_html_e( 'গেস্ট, সাধারণ কাস্টমার ও পেন্ডিং আবেদনকারীদের জন্য মূল্যের জায়গায় লগইন/অনুমোদন বার্তা দেখানো হবে এবং পণ্য কার্টে যোগ করা যাবে না।', 'woocommerce-resell-utility' ); ?></p>
+							</td>
+						</tr>
 						<tr>
 							<th scope="row">
 								<label for="wru_market_price_label"><?php esc_html_e( 'মার্কেট প্রাইস লেবেল', 'woocommerce-resell-utility' ); ?></label>

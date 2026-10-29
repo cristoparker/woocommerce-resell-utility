@@ -40,7 +40,7 @@ class WRU_Reseller_Fields {
 	public function render_reseller_input_field() {
 		global $product;
 
-		if ( ! is_a( $product, 'WC_Product' ) ) {
+		if ( ! is_a( $product, 'WC_Product' ) || ! WRU_Price_Display::can_view_prices() ) {
 			return;
 		}
 
@@ -108,7 +108,7 @@ class WRU_Reseller_Fields {
 	 * Render reseller product tools: One-click Image Download & Copy Description.
 	 */
 	public function render_product_tools() {
-		if ( ! WRU_Settings::are_product_tools_enabled() ) {
+		if ( ! WRU_Settings::are_product_tools_enabled() || ! WRU_Price_Display::can_view_prices() ) {
 			return;
 		}
 
@@ -171,6 +171,11 @@ class WRU_Reseller_Fields {
 
 		$reseller_price = (float) $raw_price;
 		$product        = wc_get_product( $product_id );
+
+		if ( ! is_numeric( $raw_price ) || $reseller_price <= 0 ) {
+			wc_add_notice( __( 'দয়া করে সঠিক বিক্রয়মূল্য লিখুন।', 'woocommerce-resell-utility' ), 'error' );
+			return false;
+		}
 
 		if ( ! $product ) {
 			return $passed;

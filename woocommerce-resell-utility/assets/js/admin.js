@@ -314,7 +314,7 @@
 			html += '    <div style="text-align:center; background:#ffffff; border:1.5px solid #cbd5e1; border-radius:8px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
 			html += '      <strong style="display:block; font-size:12.5px; margin-bottom:10px; color:#1e293b;">NID কার্ডের সামনের অংশ (Front)</strong>';
 			if (userData.nid_front) {
-				if (/\.(pdf)$/i.test(userData.nid_front)) {
+				if (userData.nid_front_pdf) {
 					html += '      <div style="padding:24px 10px;">';
 					html += '        <p style="margin-bottom:12px; font-weight:600; color:#475569;">PDF ফরম্যাট ডকুমেন্ট</p>';
 					html += '        <a href="' + encodeURI(userData.nid_front) + '" target="_blank" class="button button-primary" style="font-size:12px;">PDF ডকুমেন্ট দেখুন / ডাউনলোড</a>';
@@ -341,7 +341,7 @@
 			html += '    <div style="text-align:center; background:#ffffff; border:1.5px solid #cbd5e1; border-radius:8px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">';
 			html += '      <strong style="display:block; font-size:12.5px; margin-bottom:10px; color:#1e293b;">NID কার্ডের পেছনের অংশ (Back)</strong>';
 			if (userData.nid_back) {
-				if (/\.(pdf)$/i.test(userData.nid_back)) {
+				if (userData.nid_back_pdf) {
 					html += '      <div style="padding:24px 10px;">';
 					html += '        <p style="margin-bottom:12px; font-weight:600; color:#475569;">PDF ফরম্যাট ডকুমেন্ট</p>';
 					html += '        <a href="' + encodeURI(userData.nid_back) + '" target="_blank" class="button button-primary" style="font-size:12px;">PDF ডকুমেন্ট দেখুন / ডাউনলোড</a>';
