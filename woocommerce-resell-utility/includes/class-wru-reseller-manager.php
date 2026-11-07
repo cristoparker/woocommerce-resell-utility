@@ -654,12 +654,12 @@ class WRU_Reseller_Manager {
 		}
 
 		$admin_id = get_current_user_id();
-		self::record_ledger_entry( $reseller_id, $type, $amount, $reason, $admin_id );
+		$saved    = self::record_ledger_entry( $reseller_id, $type, $amount, $reason, $admin_id );
 
 		wp_safe_redirect( add_query_arg( array(
 			'page'    => 'wru-resellers',
 			'tab'     => 'resellers',
-			'message' => 'balance_updated',
+			'message' => $saved ? 'balance_updated' : 'invalid_amount',
 		), admin_url( 'admin.php' ) ) );
 		exit;
 	}
@@ -705,23 +705,25 @@ class WRU_Reseller_Manager {
 			return;
 		}
 
+		$amount = round( $amount, 2 );
+
 		// Lock against double submits: two parallel requests could both pass the balance check.
-		$lock = (int) get_user_meta( $user_id, '_wru_cashout_lock', true );
-		if ( $lock && $lock > time() - 30 ) {
+		// A read-then-write meta flag is not atomic, so use a MySQL named lock held until this request ends.
+		global $wpdb;
+		$lock_name = 'wru_cashout_' . $wpdb->prefix . $user_id;
+		if ( 1 !== (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', $lock_name ) ) ) {
 			wc_add_notice( __( 'আপনার আগের রিকোয়েস্টটি প্রসেস হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ), 'error' );
 			return;
 		}
-		delete_user_meta( $user_id, '_wru_cashout_lock' );
-		if ( ! add_user_meta( $user_id, '_wru_cashout_lock', time(), true ) ) {
-			wc_add_notice( __( 'আপনার আগের রিকোয়েস্টটি প্রসেস হচ্ছে। কিছুক্ষণ পর আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ), 'error' );
-			return;
-		}
+		$release = function () use ( $wpdb, $lock_name ) {
+			$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		};
 
 		$balance_data      = self::get_reseller_balance_data( $user_id );
 		$available_balance = $balance_data['available_balance'];
 
-		if ( $amount > $available_balance ) {
-			delete_user_meta( $user_id, '_wru_cashout_lock' );
+		if ( $amount > round( $available_balance, 2 ) ) {
+			$release();
 			wc_add_notice( sprintf(
 				__( 'আপনার একাউন্টে পর্যাপ্ত ব্যালেন্স নেই। সর্বোচ্চ উত্তোলনযোগ্য ব্যালেন্স: %s', 'woocommerce-resell-utility' ),
 				wc_price( $available_balance )
@@ -741,7 +743,7 @@ class WRU_Reseller_Manager {
 		) );
 
 		if ( is_wp_error( $cashout_id ) || ! $cashout_id ) {
-			delete_user_meta( $user_id, '_wru_cashout_lock' );
+			$release();
 			wc_add_notice( __( 'ক্যাশআউট রিকোয়েস্ট তৈরি করা সম্ভব হয়নি। পুনরায় চেষ্টা করুন।', 'woocommerce-resell-utility' ), 'error' );
 			return;
 		}
@@ -752,7 +754,7 @@ class WRU_Reseller_Manager {
 		update_post_meta( $cashout_id, '_wru_payout_method', $method );
 		update_post_meta( $cashout_id, '_wru_payout_number', $number );
 		update_post_meta( $cashout_id, '_wru_payout_notes', $notes );
-		delete_user_meta( $user_id, '_wru_cashout_lock' );
+		$release();
 
 		// Update user default payout details for next time
 		update_user_meta( $user_id, '_wru_payout_method', $method );
@@ -1196,6 +1198,19 @@ class WRU_Reseller_Manager {
 		check_admin_referer( 'wru_delete_cashout_action', 'wru_nonce' );
 
 		$cashout_id = isset( $_POST['cashout_id'] ) ? absint( $_POST['cashout_id'] ) : 0;
+
+		// A paid cashout is what keeps the money out of the balance. Deleting it would hand the
+		// reseller the same amount again, so paid records are permanent.
+		if ( $cashout_id && 'publish' === get_post_status( $cashout_id ) ) {
+			wp_safe_redirect( add_query_arg( array(
+				'page'    => 'wru-resellers',
+				'tab'     => 'cashouts',
+				'status'  => 'completed',
+				'message' => 'cashout_paid_locked',
+			), admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
 		// Only ever delete cashout records, never an arbitrary post ID.
 		if ( $cashout_id && self::CPT_CASHOUT === get_post_type( $cashout_id ) ) {
 			wp_delete_post( $cashout_id, true );
@@ -1897,6 +1912,8 @@ class WRU_Reseller_Manager {
 				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'আবেদনকারী, আপলোডকৃত NID কার্ডের ছবি এবং যাবতীয় তথ্য সার্ভার থেকে স্থায়ীভাবে মুছে ফেলা হয়েছে।', 'woocommerce-resell-utility' ); ?></p></div>
 			<?php elseif ( 'cashout_deleted' === $message ) : ?>
 				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'ক্যাশআউট রিকোয়েস্ট সফলভাবে মুছে ফেলা হয়েছে।', 'woocommerce-resell-utility' ); ?></p></div>
+			<?php elseif ( 'cashout_paid_locked' === $message ) : ?>
+				<div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'পরিশোধিত ক্যাশআউট মুছে ফেলা যায় না। এটি মুছলে একই টাকা আবার রিসেলারের ব্যালেন্সে ফিরে যেত। ভুল হলে ব্যালেন্স সমন্বয় ব্যবহার করুন।', 'woocommerce-resell-utility' ); ?></p></div>
 			<?php elseif ( 'invalid_amount' === $message ) : ?>
 				<div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'ভুল অ্যামাউন্ট দেওয়া হয়েছে। অনুগ্রহ করে সঠিক সংখ্যা লিখুন।', 'woocommerce-resell-utility' ); ?></p></div>
 			<?php endif; ?>
@@ -2481,6 +2498,9 @@ class WRU_Reseller_Manager {
 									<?php else : ?>
 										<div style="display:flex; flex-direction:column; gap:4px;">
 											<span style="color:#64748b; font-size:12px;"><?php esc_html_e( 'সম্পন্ন হয়েছে', 'woocommerce-resell-utility' ); ?></span>
+											<?php if ( 'publish' === $post_status ) : ?>
+												<span style="color:#64748b; font-size:11px;" title="<?php esc_attr_e( 'Deleting a paid cashout would give the same money back to the reseller, so paid records are permanent.', 'woocommerce-resell-utility' ); ?>"><?php esc_html_e( 'স্থায়ী রেকর্ড', 'woocommerce-resell-utility' ); ?></span>
+											<?php else : ?>
 											<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;" onsubmit="return confirm('<?php esc_attr_e( 'আপনি কি এই ক্যাশআউট হিস্ট্রি রেকর্ডটি ডাটাবেস থেকে সম্পূর্ণ ডিলিট করতে চান?', 'woocommerce-resell-utility' ); ?>');">
 												<?php wp_nonce_field( 'wru_delete_cashout_action', 'wru_nonce' ); ?>
 												<input type="hidden" name="action" value="wru_delete_cashout" />
@@ -2489,6 +2509,7 @@ class WRU_Reseller_Manager {
 													<?php esc_html_e( 'রেকর্ড মুছুন', 'woocommerce-resell-utility' ); ?>
 												</button>
 											</form>
+											<?php endif; ?>
 										</div>
 									<?php endif; ?>
 								</td>

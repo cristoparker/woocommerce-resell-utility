@@ -22,6 +22,7 @@ class WRU_Settings {
 	const OPTION_MARKET_LABEL        = 'wru_market_price_label';
 	const OPTION_RESELLER_LABEL      = 'wru_reseller_price_label';
 	const OPTION_HIDE_PRICES         = 'wru_hide_prices_for_non_resellers';
+	const OPTION_REMOVE_INV_DATA     = 'wru_remove_inventory_data_on_uninstall';
 
 	/**
 	 * Check if product prices are hidden from everyone except approved resellers & store managers.

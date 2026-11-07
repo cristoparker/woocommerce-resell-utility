@@ -93,6 +93,7 @@ class WRU_Admin_Settings {
 		$tools       = isset( $_POST[ WRU_Settings::OPTION_ENABLE_TOOLS ] ) ? 'yes' : 'no';
 		$dashboard   = isset( $_POST[ WRU_Settings::OPTION_ENABLE_DASHBOARD ] ) ? 'yes' : 'no';
 		$hide_prices = isset( $_POST[ WRU_Settings::OPTION_HIDE_PRICES ] ) ? 'yes' : 'no';
+		$remove_inv  = isset( $_POST[ WRU_Settings::OPTION_REMOVE_INV_DATA ] ) ? 'yes' : 'no';
 		$cancel_fee = isset( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ? (float) sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ) : 10.0;
 		$market_lbl  = isset( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ) : '';
 		$resell_lbl  = isset( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ) : '';
@@ -108,6 +109,7 @@ class WRU_Admin_Settings {
 		update_option( WRU_Settings::OPTION_ENABLE_TOOLS, $tools );
 		update_option( WRU_Settings::OPTION_ENABLE_DASHBOARD, $dashboard );
 		update_option( WRU_Settings::OPTION_HIDE_PRICES, $hide_prices );
+		update_option( WRU_Settings::OPTION_REMOVE_INV_DATA, $remove_inv, false );
 		update_option( WRU_Settings::OPTION_CANCELLATION_FEE, max( 0, $cancel_fee ) );
 		update_option( 'wru_invoice_store_name', $inv_store );
 		update_option( 'wru_invoice_store_phone', $inv_phone );
@@ -135,6 +137,7 @@ class WRU_Admin_Settings {
 		$tools       = WRU_Settings::are_product_tools_enabled();
 		$dashboard   = WRU_Settings::is_dashboard_enabled();
 		$hide_prices = WRU_Settings::are_prices_hidden();
+		$remove_inv  = 'yes' === get_option( WRU_Settings::OPTION_REMOVE_INV_DATA, 'no' );
 		$cancel_fee  = WRU_Settings::get_cancellation_fee();
 		$market_lbl  = WRU_Settings::get_market_label();
 		$resell_lbl  = WRU_Settings::get_reseller_label();
@@ -368,6 +371,13 @@ class WRU_Admin_Settings {
 						<li><strong><?php esc_html_e( 'ক্যাশআউট হিস্ট্রি:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'কাস্টম পোস্ট টাইপ (wru_cashout)-এ সেভ থাকে, যা সাইট ব্যাকআপে স্বাভাবিকভাবেই অন্তর্ভুক্ত থাকে।', 'woocommerce-resell-utility' ); ?></li>
 						<li><strong><?php esc_html_e( 'ভবিষ্যতে পুনরায় ইন্সটল:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'প্লাগইন ডিলিট করার পর ভবিষ্যতে আবার আপলোড ও অ্যাক্টিভ করলে পূর্বের সকল তথ্য সাথে সাথে পুনরায় লোড হয়ে যাবে।', 'woocommerce-resell-utility' ); ?></li>
 					</ul>
+					<p style="margin-top: 14px;">
+						<label>
+							<input type="checkbox" name="<?php echo esc_attr( WRU_Settings::OPTION_REMOVE_INV_DATA ); ?>" value="yes" <?php checked( $remove_inv, true ); ?> />
+							<strong><?php esc_html_e( 'Remove inventory data on uninstall', 'woocommerce-resell-utility' ); ?></strong>
+						</label>
+						<br><span class="description"><?php esc_html_e( 'Off by default. When ticked, deleting the plugin also drops the supplier, purchase and stock-movement tables. WooCommerce stock levels and all reseller data are never touched.', 'woocommerce-resell-utility' ); ?></span>
+					</p>
 				</div>
 
 				<p class="submit">

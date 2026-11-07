@@ -75,14 +75,19 @@ woocommerce-resell-utility/
 │   ├── class-wru-order-manager.php        # Cart, Order meta, HPOS, Admin courier box
 │   ├── class-wru-reseller-dashboard.php   # My Account Reseller Hub & payout settings
 │   ├── class-wru-invoice-email.php        # Printable packing slip invoice & email summary
-│   └── class-wru-admin-settings.php       # WooCommerce -> Resell Utility settings page
+│   ├── class-wru-admin-settings.php       # WooCommerce -> Resell Utility settings page
+│   ├── class-wru-inventory-db.php         # Inventory schema (install / upgrade / uninstall)
+│   ├── class-wru-inventory.php            # Stock movement log, purchases, suppliers, average cost
+│   └── class-wru-inventory-admin.php      # Inventory admin screens
 ├── assets/
 │   ├── css/
 │   │   ├── frontend.css                   # Grid alignment fix, badges, modals, dashboard
-│   │   └── admin.css                      # Admin order meta box & settings styling
+│   │   ├── admin.css                      # Admin order meta box & settings styling
+│   │   └── inventory.css                  # Inventory screens
 │   └── js/
 │       ├── frontend.js                    # Live profit math, variation sync, copy tools, Buy Now fix
-│       └── admin.js                       # One-click courier note copy
+│       ├── admin.js                       # One-click courier note copy
+│       └── inventory.js                   # Adjust dialog, purchase form math, product search
 ├── languages/                             # Translation directory
 ├── readme.txt                             # WordPress standard repository readme
 └── README.md                              # Complete documentation
@@ -100,11 +105,25 @@ woocommerce-resell-utility/
   - Invoices and parcel box labels display the **Reseller's Company / Shop Name** and hotline as the sender, ensuring wholesale supplier anonymity (never outputs wholesale store name).
   - Admins can print or download the packaging slip in one click directly from the Order Details page.
 
+### 11. Inventory (Stock, Purchases, Suppliers)
+- **Menu:** `Inventory` in wp-admin, with Stock, Purchases, New purchase, Stock movements and Suppliers.
+- **Stock:** tracked products with stock, average cost, reseller price, stock value and Low/Out badges; one-click adjustments (add, remove, set to) with a reason; CSV export.
+- **Purchases:** pick products or variations, quantity and unit cost, plus transport, labour, other costs and discount. Extra costs are spread over the lines by value into a landed cost, which updates each product's moving average cost. Saving adds the stock immediately.
+- **Movement log:** WooCommerce's own stock value stays the source of truth. Every change from any source (checkout, cancelled orders, refunds, the product editor, other plugins, purchases, adjustments) writes one row with the change and the stock after it.
+- **Delete rules:** a supplier with purchases can't be deleted. Deleting a purchase takes its stock back out and rolls back the average cost, and is refused if that stock has already been sold. Deleting a product removes its movement rows; purchase lines keep the product name and SKU.
+
+| Table | Purpose | Key relations |
+|---|---|---|
+| `{prefix}wru_suppliers` | Suppliers | — |
+| `{prefix}wru_purchases` | One row per supplier bill | `supplier_id` → suppliers, ON DELETE RESTRICT |
+| `{prefix}wru_purchase_items` | Purchase lines with landed cost | `purchase_id` → purchases, ON DELETE CASCADE; `product_id` set to NULL when the product is deleted |
+| `{prefix}wru_stock_movements` | Append-only stock log | rows removed with their product |
+
 ---
 
 ## Data Persistence & Long-Term Architecture Guarantee
 
-- **100% Native Architecture:** All plugin data is stored using official WordPress and WooCommerce data structures (`wp_posts`, `wp_postmeta`, `wp_usermeta`, `wp_options`, `wp_wc_orders_meta`). No unstable or non-standard custom tables are created.
+- **Native Architecture:** Reseller and order data is stored using official WordPress and WooCommerce data structures (`wp_posts`, `wp_postmeta`, `wp_usermeta`, `wp_options`, `wp_wc_orders_meta`). Only the Inventory module adds its own four tables (see section 11); they are kept on uninstall unless "Remove inventory data on uninstall" is ticked.
 - **Safe from Deactivation & Deletion:** Deactivating, disabling, or deleting the plugin **never drops or destroys** historical reseller earnings, order collection data, balance ledgers, or cashout history.
 - **Reinstall & Reload:** If the plugin is removed and re-installed in the future, all data immediately and automatically re-syncs and displays without data loss.
 - **Backup & Migration Ready:** Because standard tables are used, all data is automatically captured by standard WordPress backup tools (UpdraftPlus, Duplicator, All-in-One WP Migration, and standard mysqldump).

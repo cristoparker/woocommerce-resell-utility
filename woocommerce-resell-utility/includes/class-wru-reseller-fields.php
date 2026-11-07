@@ -31,7 +31,7 @@ class WRU_Reseller_Fields {
 		add_action( 'woocommerce_single_product_summary', array( $this, 'render_product_tools' ), 35 );
 
 		// Validate custom selling price on add to cart.
-		add_filter( 'woocommerce_add_to_cart_validation', array( $this, 'validate_reseller_price_on_add' ), 10, 3 );
+		add_filter( 'woocommerce_add_to_cart_validation', array( $this, 'validate_reseller_price_on_add' ), 10, 4 );
 	}
 
 	/**
@@ -154,10 +154,11 @@ class WRU_Reseller_Fields {
 	 *
 	 * @param bool $passed     Validation status.
 	 * @param int  $product_id Product ID.
-	 * @param int  $quantity   Quantity.
+	 * @param int  $quantity     Quantity.
+	 * @param int  $variation_id Variation ID (0 for simple products).
 	 * @return bool
 	 */
-	public function validate_reseller_price_on_add( $passed, $product_id, $quantity ) {
+	public function validate_reseller_price_on_add( $passed, $product_id, $quantity, $variation_id = 0 ) {
 		if ( ! isset( $_POST['wru_reseller_price'] ) ) {
 			return $passed;
 		}
@@ -170,7 +171,11 @@ class WRU_Reseller_Fields {
 		}
 
 		$reseller_price = (float) $raw_price;
-		$product        = wc_get_product( $product_id );
+		// Check against the variation actually bought: a variable parent's price is its cheapest variation.
+		if ( ! $variation_id && isset( $_POST['variation_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+			$variation_id = absint( $_POST['variation_id'] ); // phpcs:ignore WordPress.Security.NonceVerification
+		}
+		$product = wc_get_product( $variation_id ? $variation_id : $product_id );
 
 		if ( ! is_numeric( $raw_price ) || $reseller_price <= 0 ) {
 			wc_add_notice( __( 'দয়া করে সঠিক বিক্রয়মূল্য লিখুন।', 'woocommerce-resell-utility' ), 'error' );

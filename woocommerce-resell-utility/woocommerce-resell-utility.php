@@ -3,7 +3,7 @@
  * Plugin Name:       WooCommerce Resell Utility
  * Plugin URI:        https://github.com/cristoparker/woocommerce-resell-utility
  * Description:       Complete Dropshipping & Reseller Utility for WooCommerce. Custom reseller selling price input, live profit calculator, packaging fee deduction, Buy Now buttons, courier collection data in orders, and upgraded Reseller Dashboard.
- * Version:           2.1.0
+ * Version:           2.2.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            cristoparker
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define plugin constants.
-define( 'WRU_VERSION', '2.1.0' );
+define( 'WRU_VERSION', '2.2.0' );
 define( 'WRU_PLUGIN_FILE', __FILE__ );
 define( 'WRU_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WRU_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -91,6 +91,9 @@ final class WooCommerce_Resell_Utility {
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-admin-settings.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-invoice-email.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-manager.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory-db.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory-admin.php';
 	}
 
 	/**
@@ -120,6 +123,13 @@ final class WooCommerce_Resell_Utility {
 		WRU_Admin_Settings::init();
 		WRU_Invoice_Email::init();
 		WRU_Reseller_Manager::init();
+
+		// Inventory: create/upgrade tables when the schema version changes (also covers updates without re-activation).
+		WRU_Inventory_DB::maybe_install();
+		WRU_Inventory::init();
+		if ( is_admin() ) {
+			WRU_Inventory_Admin::init();
+		}
 
 		// Register frontend scripts and styles.
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_assets' ) );
@@ -190,6 +200,7 @@ final class WooCommerce_Resell_Utility {
 	 * Activation callback: flush rewrite rules for custom My Account endpoint.
 	 */
 	public function activate() {
+		WRU_Inventory_DB::install();
 		WRU_Reseller_Dashboard::init();
 		if ( ! get_role( 'wru_reseller' ) ) {
 			add_role(

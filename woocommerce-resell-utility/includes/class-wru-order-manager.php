@@ -231,12 +231,15 @@ class WRU_Order_Manager {
 			$reseller_price = (float) $product->get_regular_price() ?: $wholesale_price;
 		}
 
+		// Same per-product fee the order totals use, so the line profit shown to the reseller matches the payout.
 		$packaging_mode = WRU_Settings::get_packaging_type();
-		$unit_packaging = ( 'item' === $packaging_mode ) ? WRU_Settings::get_packaging_fee() : 0;
+		$pack_fee       = WRU_Product_Fields::get_packaging_fee( $product );
+		$unit_packaging = ( 'item' === $packaging_mode ) ? $pack_fee : 0;
 		$unit_profit    = max( 0, $reseller_price - $wholesale_price - $unit_packaging );
 		$total_profit   = $unit_profit * $quantity;
 
-		// Internal hidden meta.
+		// Internal hidden meta (snapshots: later price or fee changes must not rewrite this order's profit).
+		$item->add_meta_data( '_wru_pack_fee', $pack_fee, true );
 		$item->add_meta_data( '_wru_reseller_price', $reseller_price, true );
 		$item->add_meta_data( '_wru_wholesale_price', $wholesale_price, true );
 		$item->add_meta_data( '_wru_unit_profit', $unit_profit, true );
@@ -258,9 +261,19 @@ class WRU_Order_Manager {
 		if ( ! $order ) {
 			$order = wc_get_order( $order_id );
 		}
-		if ( ! $order ) {
-			return;
+		if ( $order ) {
+			// Only the checkout request itself may supply the reseller's shop name / phone.
+			$this->compute_order_totals( $order, doing_action( 'woocommerce_checkout_order_processed' ) );
 		}
+	}
+
+	/**
+	 * Calculate & save reseller totals from the order's own line snapshots.
+	 *
+	 * @param \WC_Order $order         Order.
+	 * @param bool      $from_checkout Whether the classic checkout POST may be read.
+	 */
+	private function compute_order_totals( $order, $from_checkout = false ) {
 
 		$total_collection = 0.0;
 		$total_wholesale  = 0.0;
@@ -293,19 +306,34 @@ class WRU_Order_Manager {
 			}
 		}
 
-		// Calculate packaging fee per item or order using product-specific fees.
-		$packaging_mode  = WRU_Settings::get_packaging_type();
-		$total_packaging = 0.0;
-
-		foreach ( $order->get_items() as $item ) {
-			$qty           = (int) $item->get_quantity();
-			$prod          = $item->get_product();
-			$item_pack_fee = $prod ? WRU_Product_Fields::get_packaging_fee( $prod ) : WRU_Settings::get_packaging_fee();
-			$total_packaging += ( 'item' === $packaging_mode ) ? ( $item_pack_fee * $qty ) : $item_pack_fee;
+		// Packaging: the mode and per-line fees are frozen when the order is placed, so changing the
+		// settings later never rewrites the profit of existing orders.
+		$packaging_mode = $order->get_meta( '_wru_packaging_mode' );
+		if ( ! in_array( $packaging_mode, array( 'order', 'item' ), true ) ) {
+			$packaging_mode = WRU_Settings::get_packaging_type();
+			$order->update_meta_data( '_wru_packaging_mode', $packaging_mode );
 		}
 
-		if ( $total_packaging <= 0 ) {
-			$total_packaging = WRU_Settings::get_packaging_fee();
+		$total_packaging = 0.0;
+		$largest_fee     = 0.0;
+		foreach ( $order->get_items() as $item ) {
+			$qty      = (int) $item->get_quantity();
+			$snapshot = $item->get_meta( '_wru_pack_fee', true );
+			if ( '' !== $snapshot && null !== $snapshot && is_numeric( $snapshot ) ) {
+				$item_pack_fee = max( 0, (float) $snapshot );
+			} else {
+				$prod          = $item->get_product();
+				$item_pack_fee = $prod ? WRU_Product_Fields::get_packaging_fee( $prod ) : WRU_Settings::get_packaging_fee();
+			}
+			if ( 'item' === $packaging_mode ) {
+				$total_packaging += $item_pack_fee * $qty;
+			} else {
+				$largest_fee = max( $largest_fee, $item_pack_fee );
+			}
+		}
+		if ( 'order' === $packaging_mode ) {
+			// "Once per order" means once, not once per line.
+			$total_packaging = $largest_fee;
 		}
 
 		// Courier COD: Total customer selling price + shipping charge.
@@ -329,7 +357,13 @@ class WRU_Order_Manager {
 		$company     = '';
 		$phone       = '';
 
-		if ( isset( $_POST['billing_company'] ) && ! empty( trim( $_POST['billing_company'] ) ) ) {
+		if ( ! $from_checkout ) {
+			// Status changes, admin edits and Store API orders: never read the request. Fill a missing
+			// label sender from the reseller's profile, but keep whatever the order already has.
+			if ( ! $order->get_meta( '_wru_reseller_company_name' ) && $reseller_id ) {
+				$company = get_user_meta( $reseller_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $reseller_id, 'billing_company', true );
+			}
+		} elseif ( isset( $_POST['billing_company'] ) && ! empty( trim( $_POST['billing_company'] ) ) ) {
 			$company = sanitize_text_field( wp_unslash( $_POST['billing_company'] ) );
 		} elseif ( isset( $_POST['wru_reseller_company_name'] ) && ! empty( trim( $_POST['wru_reseller_company_name'] ) ) ) {
 			$company = sanitize_text_field( wp_unslash( $_POST['wru_reseller_company_name'] ) );
@@ -337,7 +371,11 @@ class WRU_Order_Manager {
 			$company = get_user_meta( $reseller_id, '_wru_reseller_company_name', true ) ?: get_user_meta( $reseller_id, 'billing_company', true );
 		}
 
-		if ( isset( $_POST['billing_reseller_phone'] ) && ! empty( trim( $_POST['billing_reseller_phone'] ) ) ) {
+		if ( ! $from_checkout ) {
+			if ( ! $order->get_meta( '_wru_reseller_phone' ) && $reseller_id ) {
+				$phone = get_user_meta( $reseller_id, '_wru_reseller_phone', true ) ?: get_user_meta( $reseller_id, '_wru_payout_number', true );
+			}
+		} elseif ( isset( $_POST['billing_reseller_phone'] ) && ! empty( trim( $_POST['billing_reseller_phone'] ) ) ) {
 			$phone = sanitize_text_field( wp_unslash( $_POST['billing_reseller_phone'] ) );
 		} elseif ( isset( $_POST['wru_reseller_phone'] ) && ! empty( trim( $_POST['wru_reseller_phone'] ) ) ) {
 			$phone = sanitize_text_field( wp_unslash( $_POST['wru_reseller_phone'] ) );
@@ -347,14 +385,14 @@ class WRU_Order_Manager {
 
 		if ( ! empty( $company ) ) {
 			$order->update_meta_data( '_wru_reseller_company_name', $company );
-			if ( $reseller_id ) {
+			if ( $reseller_id && $from_checkout ) {
 				update_user_meta( $reseller_id, '_wru_reseller_company_name', $company );
 			}
 		}
 
 		if ( ! empty( $phone ) ) {
 			$order->update_meta_data( '_wru_reseller_phone', $phone );
-			if ( $reseller_id ) {
+			if ( $reseller_id && $from_checkout ) {
 				update_user_meta( $reseller_id, '_wru_reseller_phone', $phone );
 			}
 		}
@@ -369,7 +407,7 @@ class WRU_Order_Manager {
 	 */
 	public function calculate_store_api_order_totals( $order ) {
 		if ( $order instanceof \WC_Order ) {
-			$this->calculate_order_reseller_totals( $order->get_id(), array(), $order );
+			$this->compute_order_totals( $order, false );
 		}
 	}
 
@@ -390,7 +428,9 @@ class WRU_Order_Manager {
 				$order->save();
 			}
 		}
-		$this->calculate_order_reseller_totals( $order_id, array(), $order );
+		if ( $order ) {
+			$this->compute_order_totals( $order, false );
+		}
 	}
 
 	/**
@@ -552,7 +592,7 @@ class WRU_Order_Manager {
 
 		// Auto-calculate if missing or zero
 		if ( $collection <= 0 || ! $is_resell_order ) {
-			$this->calculate_order_reseller_totals( $order->get_id(), array(), $order );
+			$this->compute_order_totals( $order, false );
 			$collection = (float) $order->get_meta( '_wru_total_collection_amount' );
 			$wholesale  = (float) $order->get_meta( '_wru_total_wholesale_amount' );
 			$packaging  = (float) $order->get_meta( '_wru_total_packaging_fee' );

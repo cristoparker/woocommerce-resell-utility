@@ -4,7 +4,7 @@ Tags: woocommerce, dropshipping, reseller, resell utility, wholesale, courier, S
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.1.0
+Stable tag: 2.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,20 @@ Inside each WooCommerce Order edit screen, in the "ড্রপশিপিং �
 Yes! Logged-in resellers can visit **My Account → রিসেলার ড্যাশবোর্ড** to see their earnings, order history, and save their payout method.
 
 == Changelog ==
+
+= 2.2.0 =
+* New: Inventory menu with Stock, Purchases, New purchase, Stock movements and Suppliers screens.
+* New: every stock change (checkout, cancellations, refunds, product editor, other plugins, purchases, adjustments) is written to one movement log.
+* New: purchases with transport, labour, other costs and discount spread into a landed cost; average cost per product and stock value at cost.
+* New: four InnoDB tables with foreign keys. Suppliers with purchases can't be deleted; deleting a purchase takes its stock back out; deleting a product removes its movement rows.
+* New: optional "Remove inventory data on uninstall" setting (off by default).
+* Security: a paid cashout can no longer be deleted (deleting it put the money back into the reseller's balance).
+* Security: the cashout double-submit lock is now a real database lock instead of a check-then-write flag.
+* Fix: "once per order" packaging was charged once per order line.
+* Fix: order profit no longer changes when packaging settings or product fees change after the order was placed.
+* Fix: changing an order's status in admin no longer overwrites the reseller's saved shop name with the customer's billing company.
+* Fix: the minimum selling price is checked against the chosen variation, not the cheapest one.
+* Fix: line profit shown in cart and emails uses the product's own packaging fee, matching the order total.
 
 = 2.1.0 =
 * Prices are now visible only to approved resellers and store managers (toggle in settings); guests and pending applicants see a login/approval notice and cannot add products to the cart.
