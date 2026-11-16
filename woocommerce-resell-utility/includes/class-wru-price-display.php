@@ -2,6 +2,10 @@
 /**
  * Market & Reseller Price Display Module.
  *
+ * Normal visitors and customers see the stock WooCommerce prices and checkout. Everything in this
+ * class (market/reseller price blocks, sale badge removal, flattened cart prices) only applies to
+ * approved resellers.
+ *
  * @package WooCommerce_Resell_Utility
  */
 
@@ -23,7 +27,7 @@ class WRU_Price_Display {
 	}
 
 	/**
-	 * Register WooCommerce hooks.
+	 * Register WooCommerce hooks. Every callback bails out unless the current user is a reseller.
 	 */
 	public function register_hooks() {
 		if ( ! is_admin() || wp_doing_ajax() ) {
@@ -33,119 +37,27 @@ class WRU_Price_Display {
 			add_filter( 'woocommerce_format_sale_price', array( $this, 'filter_format_sale_price' ), 999, 3 );
 			// WooCommerce Store API (Cart & Checkout Blocks) filter: equalize regular_price and price to prevent "Save ..." badge.
 			add_filter( 'woocommerce_store_api_cart_line_item_data', array( $this, 'filter_store_api_cart_line_item_data' ), 999, 2 );
-
-			// Reseller-only pricing: non-resellers can neither see prices nor purchase.
-			add_filter( 'woocommerce_is_purchasable', array( $this, 'filter_is_purchasable' ), 999, 2 );
-			add_filter( 'woocommerce_variation_is_purchasable', array( $this, 'filter_is_purchasable' ), 999, 2 );
-			add_filter( 'woocommerce_structured_data_product_offer', array( $this, 'filter_structured_data_offer' ), 999, 2 );
 		}
-
-		// Store API (blocks) exposes raw prices over REST, strip them for non-resellers.
-		add_filter( 'rest_post_dispatch', array( $this, 'filter_store_api_product_prices' ), 999, 3 );
 	}
 
 	/**
-	 * Whether the current visitor is allowed to see product prices and purchase.
+	 * Whether the current visitor gets the reseller storefront (reseller prices, own-price input,
+	 * Buy Now tools). Only approved resellers qualify; guests, customers and pending applicants
+	 * shop the normal store.
 	 *
 	 * @return bool
 	 */
-	public static function can_view_prices() {
+	public static function is_reseller_mode() {
 		static $cache = array();
 
-		if ( ! WRU_Settings::are_prices_hidden() ) {
-			return true;
-		}
-		if ( ( is_admin() && ! wp_doing_ajax() ) || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
-			return true;
-		}
-
 		$user_id = get_current_user_id();
+		if ( ! $user_id ) {
+			return false;
+		}
 		if ( ! isset( $cache[ $user_id ] ) ) {
-			$cache[ $user_id ] = WRU_Reseller_Manager::is_reseller( $user_id );
+			$cache[ $user_id ] = (bool) apply_filters( 'wru_is_reseller_mode', WRU_Reseller_Manager::is_active_reseller( $user_id ), $user_id );
 		}
 		return $cache[ $user_id ];
-	}
-
-	/**
-	 * Message shown in place of the price for visitors who are not approved resellers.
-	 *
-	 * @return string
-	 */
-	public static function get_hidden_price_html() {
-		$account_url = function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : wp_login_url();
-
-		if ( ! is_user_logged_in() ) {
-			$message = sprintf(
-				/* translators: %s: My Account URL */
-				__( 'মূল্য দেখতে <a href="%s">রিসেলার হিসেবে লগইন / রেজিস্ট্রেশন</a> করুন', 'woocommerce-resell-utility' ),
-				esc_url( $account_url )
-			);
-		} elseif ( 'pending' === get_user_meta( get_current_user_id(), '_wru_reseller_status', true ) ) {
-			$message = esc_html__( 'আপনার রিসেলার আবেদন অনুমোদনের অপেক্ষায়। অনুমোদনের পর মূল্য দেখা যাবে।', 'woocommerce-resell-utility' );
-		} else {
-			$message = esc_html__( 'শুধুমাত্র অনুমোদিত রিসেলারগণ মূল্য দেখতে পারবেন।', 'woocommerce-resell-utility' );
-		}
-
-		return apply_filters( 'wru_hidden_price_html', '<span class="wru-price-hidden">' . $message . '</span>' );
-	}
-
-	/**
-	 * Block purchasing for visitors who cannot see prices.
-	 *
-	 * @param bool        $purchasable Purchasable status.
-	 * @param \WC_Product $product     Product object.
-	 * @return bool
-	 */
-	public function filter_is_purchasable( $purchasable, $product ) {
-		return self::can_view_prices() ? $purchasable : false;
-	}
-
-	/**
-	 * Remove price info from schema.org JSON-LD for non-resellers.
-	 *
-	 * @param array       $markup  Offer markup.
-	 * @param \WC_Product $product Product object.
-	 * @return array
-	 */
-	public function filter_structured_data_offer( $markup, $product ) {
-		if ( self::can_view_prices() ) {
-			return $markup;
-		}
-		unset( $markup['price'], $markup['priceSpecification'], $markup['lowPrice'], $markup['highPrice'] );
-		return $markup;
-	}
-
-	/**
-	 * Strip prices from Store API product responses for non-resellers.
-	 *
-	 * @param \WP_HTTP_Response $response Response.
-	 * @param \WP_REST_Server   $server   Server.
-	 * @param \WP_REST_Request  $request  Request.
-	 * @return \WP_HTTP_Response
-	 */
-	public function filter_store_api_product_prices( $response, $server, $request ) {
-		if ( ! ( $response instanceof WP_HTTP_Response ) || ! preg_match( '#^/wc/store(/v\d+)?/products#', $request->get_route() ) || self::can_view_prices() ) {
-			return $response;
-		}
-
-		$data   = $response->get_data();
-		$strip  = function ( $item ) {
-			if ( is_array( $item ) && isset( $item['prices'] ) ) {
-				$item['prices']         = array();
-				$item['price_html']     = self::get_hidden_price_html();
-				$item['is_purchasable'] = false;
-			}
-			return $item;
-		};
-
-		if ( is_array( $data ) && isset( $data['prices'] ) ) {
-			$data = $strip( $data );
-		} elseif ( is_array( $data ) ) {
-			$data = array_map( $strip, $data );
-		}
-
-		$response->set_data( $data );
-		return $response;
 	}
 
 	/**
@@ -158,7 +70,7 @@ class WRU_Price_Display {
 	 * @return string
 	 */
 	public function filter_format_sale_price( $price, $regular_price, $sale_price ) {
-		if ( is_cart() || is_checkout() || wp_doing_ajax() || did_action( 'woocommerce_before_cart' ) || did_action( 'woocommerce_before_checkout_form' ) ) {
+		if ( self::is_reseller_mode() && ( is_cart() || is_checkout() || wp_doing_ajax() || did_action( 'woocommerce_before_cart' ) || did_action( 'woocommerce_before_checkout_form' ) ) ) {
 			return wc_price( $sale_price );
 		}
 		return $price;
@@ -173,7 +85,7 @@ class WRU_Price_Display {
 	 * @return array
 	 */
 	public function filter_store_api_cart_line_item_data( $item_data, $cart_item ) {
-		if ( isset( $item_data['prices'] ) && is_array( $item_data['prices'] ) ) {
+		if ( self::is_reseller_mode() && isset( $item_data['prices'] ) && is_array( $item_data['prices'] ) ) {
 			if ( isset( $item_data['prices']['price'] ) ) {
 				$item_data['prices']['regular_price'] = $item_data['prices']['price'];
 				$item_data['prices']['sale_price']    = $item_data['prices']['price'];
@@ -191,7 +103,7 @@ class WRU_Price_Display {
 	 * @return string
 	 */
 	public function filter_sale_flash( $html, $post, $product ) {
-		if ( is_admin() && ! wp_doing_ajax() ) {
+		if ( ( is_admin() && ! wp_doing_ajax() ) || ! self::is_reseller_mode() ) {
 			return $html;
 		}
 
@@ -211,12 +123,8 @@ class WRU_Price_Display {
 			return $price_html;
 		}
 
-		if ( ! is_a( $product, 'WC_Product' ) ) {
+		if ( ! is_a( $product, 'WC_Product' ) || ! self::is_reseller_mode() ) {
 			return $price_html;
-		}
-
-		if ( ! self::can_view_prices() ) {
-			return self::get_hidden_price_html();
 		}
 
 		// In Cart and Checkout, output ONLY the active single price (eliminating any dual price or regular vs sale comparison)
@@ -427,16 +335,7 @@ class WRU_Price_Display {
 	 * @return array
 	 */
 	public function filter_available_variation( $data, $product, $variation ) {
-		if ( is_admin() && ! wp_doing_ajax() ) {
-			return $data;
-		}
-
-		if ( ! self::can_view_prices() ) {
-			$data['price_html']            = '<span class="price">' . self::get_hidden_price_html() . '</span>';
-			$data['display_price']         = '';
-			$data['display_regular_price'] = '';
-			$data['wru_wholesale_price']   = '';
-			$data['is_purchasable']        = false;
+		if ( ( is_admin() && ! wp_doing_ajax() ) || ! self::is_reseller_mode() ) {
 			return $data;
 		}
 

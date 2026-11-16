@@ -89,6 +89,12 @@ class WRU_Reseller_Dashboard {
 	 * @return array
 	 */
 	public function add_menu_item( $items ) {
+		// Normal customers never see reseller menus; resellers and applicants (pending/rejected) do.
+		$user_id = get_current_user_id();
+		if ( ! $user_id || ( ! WRU_Reseller_Manager::is_reseller( $user_id ) && ! get_user_meta( $user_id, '_wru_reseller_status', true ) ) ) {
+			return $items;
+		}
+
 		$new_items = array();
 
 		foreach ( $items as $key => $title ) {
@@ -250,8 +256,21 @@ class WRU_Reseller_Dashboard {
 					</div>
 					<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:1.35rem;"><?php esc_html_e( 'শুধুমাত্র অনুমোদিত রিসেলারদের জন্য', 'woocommerce-resell-utility' ); ?></h3>
 					<p style="color:#64748b; font-size:0.95rem; max-width:480px; margin:0 auto 16px; line-height:1.6;">
-						<?php esc_html_e( 'এই রিসেলার ড্যাশবোর্ডটি শুধুমাত্র আমাদের নিবন্ধিত রিসেলার পার্টনারদের জন্য। আপনি যদি রিসেলার হিসেবে ড্রপশিপিং করতে চান, অনুগ্রহ করে আমাদের সাথে যোগাযোগ করুন।', 'woocommerce-resell-utility' ); ?>
+						<?php
+						$reseller_status = get_user_meta( $user_id, '_wru_reseller_status', true );
+						$reg_url         = WRU_Settings::get_reseller_registration_url();
+						if ( 'pending' === $reseller_status ) {
+							esc_html_e( 'আপনার রিসেলার আবেদনটি অ্যাডমিন অনুমোদনের অপেক্ষায় আছে। অনুমোদনের পর এখানে ড্যাশবোর্ড চালু হবে।', 'woocommerce-resell-utility' );
+						} elseif ( 'rejected' === $reseller_status ) {
+							esc_html_e( 'আপনার রিসেলার আবেদনটি বাতিল করা হয়েছে। বিস্তারিত জানতে আমাদের সাথে যোগাযোগ করুন।', 'woocommerce-resell-utility' );
+						} else {
+							esc_html_e( 'এই রিসেলার ড্যাশবোর্ডটি শুধুমাত্র আমাদের নিবন্ধিত রিসেলার পার্টনারদের জন্য।', 'woocommerce-resell-utility' );
+						}
+						?>
 					</p>
+					<?php if ( ! $reseller_status && $reg_url ) : ?>
+						<a class="button alt" href="<?php echo esc_url( $reg_url ); ?>"><?php esc_html_e( 'রিসেলার হিসেবে আবেদন করুন', 'woocommerce-resell-utility' ); ?></a>
+					<?php endif; ?>
 				</div>
 			</div>
 			<?php

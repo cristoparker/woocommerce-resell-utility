@@ -128,7 +128,7 @@ class WRU_Order_Manager {
 	 * @return array
 	 */
 	public function add_cart_item_data( $cart_item_data, $product_id, $variation_id ) {
-		if ( isset( $_POST['wru_reseller_price'] ) && '' !== trim( wp_unslash( $_POST['wru_reseller_price'] ) ) ) {
+		if ( WRU_Price_Display::is_reseller_mode() && isset( $_POST['wru_reseller_price'] ) && '' !== trim( wp_unslash( $_POST['wru_reseller_price'] ) ) ) {
 			$reseller_price = max( 0, (float) sanitize_text_field( wp_unslash( $_POST['wru_reseller_price'] ) ) );
 			$cart_item_data['wru_reseller_price'] = $reseller_price;
 			// Unique key prevents merging if same item added with different reseller prices.
@@ -195,6 +195,10 @@ class WRU_Order_Manager {
 	 * @return string
 	 */
 	public function filter_clean_cart_price_html( $price_html, $cart_item, $cart_key ) {
+		// Normal customers keep the stock WooCommerce cart price display.
+		if ( ! WRU_Price_Display::is_reseller_mode() ) {
+			return $price_html;
+		}
 		// If product is valid, return only the active wholesale price so no regular price or del tag is outputted!
 		if ( ! empty( $cart_item['data'] ) && is_a( $cart_item['data'], 'WC_Product' ) ) {
 			return wc_price( $cart_item['data']->get_price() );
@@ -220,6 +224,11 @@ class WRU_Order_Manager {
 		$reseller_price = 0.0;
 		if ( isset( $values['wru_reseller_price'] ) && (float) $values['wru_reseller_price'] > 0 ) {
 			$reseller_price = (float) $values['wru_reseller_price'];
+		}
+
+		// Normal customer orders carry no reseller data at all.
+		if ( ! WRU_Price_Display::is_reseller_mode() ) {
+			return;
 		}
 
 		$product         = $values['data'];
@@ -263,8 +272,30 @@ class WRU_Order_Manager {
 		}
 		if ( $order ) {
 			// Only the checkout request itself may supply the reseller's shop name / phone.
-			$this->compute_order_totals( $order, doing_action( 'woocommerce_checkout_order_processed' ) );
+			// Only an order placed by a reseller becomes a resell order.
+			$this->compute_order_totals( $order, doing_action( 'woocommerce_checkout_order_processed' ), WRU_Price_Display::is_reseller_mode() );
 		}
+	}
+
+	/**
+	 * Whether an order is a reseller (drop-shipping) order. Normal customer orders are not.
+	 *
+	 * @param \WC_Order $order Order.
+	 * @return bool
+	 */
+	public static function is_resell_order( $order ) {
+		if ( ! $order instanceof \WC_Order ) {
+			return false;
+		}
+		if ( 'yes' === $order->get_meta( '_wru_is_resell_order' ) ) {
+			return true;
+		}
+		foreach ( $order->get_items() as $item ) {
+			if ( '' !== (string) $item->get_meta( '_wru_reseller_price', true ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -272,8 +303,13 @@ class WRU_Order_Manager {
 	 *
 	 * @param \WC_Order $order         Order.
 	 * @param bool      $from_checkout Whether the classic checkout POST may be read.
+	 * @param bool      $force_resell  Treat the order as a resell order even before it is flagged
+	 *                                 (set while a reseller is placing it).
 	 */
-	private function compute_order_totals( $order, $from_checkout = false ) {
+	private function compute_order_totals( $order, $from_checkout = false, $force_resell = false ) {
+		if ( ! $force_resell && ! self::is_resell_order( $order ) ) {
+			return; // Normal customer order: leave it exactly as WooCommerce made it.
+		}
 
 		$total_collection = 0.0;
 		$total_wholesale  = 0.0;
@@ -407,7 +443,7 @@ class WRU_Order_Manager {
 	 */
 	public function calculate_store_api_order_totals( $order ) {
 		if ( $order instanceof \WC_Order ) {
-			$this->compute_order_totals( $order, false );
+			$this->compute_order_totals( $order, false, WRU_Price_Display::is_reseller_mode() );
 		}
 	}
 
@@ -584,19 +620,24 @@ class WRU_Order_Manager {
 			return;
 		}
 
-		$is_resell_order = 'yes' === $order->get_meta( '_wru_is_resell_order' );
+		$is_resell_order = self::is_resell_order( $order );
 		$collection      = (float) $order->get_meta( '_wru_total_collection_amount' );
 		$wholesale       = (float) $order->get_meta( '_wru_total_wholesale_amount' );
 		$packaging       = (float) $order->get_meta( '_wru_total_packaging_fee' );
 		$profit          = (float) $order->get_meta( '_wru_total_reseller_profit' );
 
-		// Auto-calculate if missing or zero
-		if ( $collection <= 0 || ! $is_resell_order ) {
-			$this->compute_order_totals( $order, false );
-			$collection = (float) $order->get_meta( '_wru_total_collection_amount' );
-			$wholesale  = (float) $order->get_meta( '_wru_total_wholesale_amount' );
-			$packaging  = (float) $order->get_meta( '_wru_total_packaging_fee' );
-			$profit     = (float) $order->get_meta( '_wru_total_reseller_profit' );
+		if ( $is_resell_order ) {
+			// Auto-calculate if missing or zero
+			if ( $collection <= 0 || 'yes' !== $order->get_meta( '_wru_is_resell_order' ) ) {
+				$this->compute_order_totals( $order, false );
+				$collection = (float) $order->get_meta( '_wru_total_collection_amount' );
+				$wholesale  = (float) $order->get_meta( '_wru_total_wholesale_amount' );
+				$packaging  = (float) $order->get_meta( '_wru_total_packaging_fee' );
+				$profit     = (float) $order->get_meta( '_wru_total_reseller_profit' );
+			}
+		} else {
+			// Normal customer order: the courier collects the order total only for cash on delivery.
+			$collection = 'cod' === $order->get_payment_method() ? (float) $order->get_total() : 0.0;
 		}
 
 		// Prepare courier note copy text using recipient customer details
@@ -664,6 +705,9 @@ class WRU_Order_Manager {
 				</div>
 			</div>
 
+			<?php if ( ! $is_resell_order ) : ?>
+				<p style="margin: 0 0 16px; color: #475569;"><em><?php esc_html_e( 'এটি একটি সাধারণ কাস্টমার অর্ডার — রিসেলার লাভ/ব্যালেন্স হিসাব প্রযোজ্য নয়।', 'woocommerce-resell-utility' ); ?></em></p>
+			<?php else : ?>
 			<!-- Reseller Brand Info on Packaging Slip Editor -->
 			<div class="wru-admin-reseller-brand-edit" style="margin-bottom: 20px; padding: 14px 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px;">
 				<div style="font-weight: 700; color: #1e293b; font-size: 13px; margin-bottom: 8px;">
@@ -731,6 +775,8 @@ class WRU_Order_Manager {
 				</div>
 			<?php endif; ?>
 
+			<?php endif; // $is_resell_order ?>
+
 			<div class="wru-admin-courier-action">
 				<div class="wru-courier-note-box">
 					<label><strong><?php esc_html_e( 'কুরিয়ার বুকিং নোট (Steadfast / Pathao / RedX / Paperfly ইত্যাদির জন্য):', 'woocommerce-resell-utility' ); ?></strong></label>
@@ -754,8 +800,7 @@ class WRU_Order_Manager {
 			return;
 		}
 
-		$is_resell_order = 'yes' === $order->get_meta( '_wru_is_resell_order' );
-		if ( ! $is_resell_order ) {
+		if ( ! self::is_resell_order( $order ) ) {
 			return;
 		}
 
@@ -849,11 +894,13 @@ class WRU_Order_Manager {
 		foreach ( $columns as $key => $label ) {
 			$new_columns[ $key ] = $label;
 			if ( 'order_status' === $key || 'order_number' === $key ) {
+				$new_columns['wru_order_type']     = __( 'অর্ডার ধরন', 'woocommerce-resell-utility' );
 				$new_columns['wru_reseller_brand'] = __( 'রিসেলার শপ', 'woocommerce-resell-utility' );
 				$new_columns['wru_cod_amount']     = __( 'COD কালেকশন', 'woocommerce-resell-utility' );
 			}
 		}
 		if ( ! isset( $new_columns['wru_reseller_brand'] ) ) {
+			$new_columns['wru_order_type']     = __( 'অর্ডার ধরন', 'woocommerce-resell-utility' );
 			$new_columns['wru_reseller_brand'] = __( 'রিসেলার শপ', 'woocommerce-resell-utility' );
 			$new_columns['wru_cod_amount']     = __( 'COD কালেকশন', 'woocommerce-resell-utility' );
 		}
@@ -872,7 +919,17 @@ class WRU_Order_Manager {
 			return;
 		}
 
-		if ( 'wru_reseller_brand' === $column ) {
+		if ( 'wru_order_type' === $column ) {
+			if ( self::is_resell_order( $order ) ) {
+				echo '<mark class="order-status" style="background:#dcfce7;color:#166534;"><span>' . esc_html__( 'রিসেলার', 'woocommerce-resell-utility' ) . '</span></mark>';
+			} else {
+				echo '<mark class="order-status"><span>' . esc_html__( 'সাধারণ', 'woocommerce-resell-utility' ) . '</span></mark>';
+			}
+		} elseif ( 'wru_reseller_brand' === $column ) {
+			if ( ! self::is_resell_order( $order ) ) {
+				echo '<span style="color: #9ca3af;">—</span>';
+				return;
+			}
 			$company = $order->get_meta( '_wru_reseller_company_name' ) ?: $order->get_billing_company();
 			if ( empty( $company ) ) {
 				$uid = $order->get_customer_id();

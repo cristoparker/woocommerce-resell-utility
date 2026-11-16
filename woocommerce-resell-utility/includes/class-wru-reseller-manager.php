@@ -62,6 +62,28 @@ class WRU_Reseller_Manager {
 	}
 
 	/**
+	 * Whether a user is an approved reseller (role or approved status), NOT counting store
+	 * admins/managers. This decides who gets the reseller storefront (reseller prices, custom
+	 * selling price input, Buy Now tools); everyone else shops the normal store.
+	 *
+	 * @param int $user_id User ID (0 for current user).
+	 * @return bool
+	 */
+	public static function is_active_reseller( $user_id = 0 ) {
+		if ( ! $user_id ) {
+			$user_id = get_current_user_id();
+		}
+		if ( ! $user_id ) {
+			return false;
+		}
+		if ( 'approved' === get_user_meta( $user_id, '_wru_reseller_status', true ) ) {
+			return true;
+		}
+		$user = get_userdata( $user_id );
+		return $user && in_array( self::ROLE_RESELLER, (array) $user->roles, true );
+	}
+
+	/**
 	 * Get localized error message explaining why checkout order confirmation was blocked.
 	 *
 	 * @param int $user_id User ID (0 for current user).
@@ -118,11 +140,7 @@ class WRU_Reseller_Manager {
 		// Move NID files uploaded by older versions out of the public uploads folder.
 		add_action( 'admin_init', array( $this, 'maybe_migrate_nid_files' ) );
 
-		// Reseller Registration on WooCommerce My Account.
-		add_action( 'woocommerce_register_form_tag', array( $this, 'add_register_form_enctype' ) );
-		add_action( 'woocommerce_register_form', array( $this, 'render_registration_fields' ) );
-		add_filter( 'woocommerce_process_registration_errors', array( $this, 'validate_registration_fields' ), 10, 4 );
-		add_action( 'woocommerce_created_customer', array( $this, 'handle_reseller_registration' ) );
+		// Reseller registration lives on its own page: see WRU_Reseller_Registration.
 
 		// Clean up physical NID files & orphan records before/after a user is deleted anywhere in WordPress.
 		add_action( 'delete_user', array( $this, 'on_user_delete_action' ), 10, 1 );
@@ -2828,235 +2846,5 @@ class WRU_Reseller_Manager {
 			<?php endif; ?>
 		</div>
 		<?php
-	}
-
-	/**
-	 * Ensure WooCommerce register form supports file uploads (NID).
-	 */
-	public function add_register_form_enctype() {
-		echo ' enctype="multipart/form-data"';
-	}
-
-	/**
-	 * Render custom Reseller Registration fields on WooCommerce My Account registration form.
-	 */
-	public function render_registration_fields() {
-		?>
-		<div class="wru-reseller-reg-section" style="margin-top:20px; padding-top:16px; border-top:1px solid #e2e8f0;">
-			<div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px 14px; margin-bottom:16px;">
-				<h4 style="margin:0 0 4px 0; color:#166534; font-size:14px; font-weight:700;">
-					<?php esc_html_e( 'রিসেলার পার্টনার রেজিস্ট্রেশন তথ্য', 'woocommerce-resell-utility' ); ?>
-				</h4>
-				<p style="margin:0; font-size:12px; color:#15803d; line-height:1.5;">
-					<?php esc_html_e( 'আমাদের প্ল্যাটফর্মে ড্রপশিপিং রিসেলার হিসেবে কাজ করতে নিচের তথ্য ও NID কার্ডের উভয় পাশের ছবি প্রদান করুন। এডমিন যাচাই করে আপনার একাউন্ট অনুমোদন করবেন।', 'woocommerce-resell-utility' ); ?>
-				</p>
-			</div>
-
-			<p class="woocommerce-form-row woocommerce-form-row--wide form-row form-row-wide">
-				<label for="wru_reg_company_name"><?php esc_html_e( 'আপনার শপ / ফেসবুক পেজ / ব্র্যান্ডের নাম (ঐচ্ছিক)', 'woocommerce-resell-utility' ); ?></label>
-				<input type="text" class="woocommerce-Input woocommerce-Input--text input-text" name="wru_reg_company_name" id="wru_reg_company_name" value="<?php echo ! empty( $_POST['wru_reg_company_name'] ) ? esc_attr( wp_unslash( $_POST['wru_reg_company_name'] ) ) : ''; ?>" placeholder="<?php esc_attr_e( 'যেমন: Trendz Fashion BD বা আপনার পেজের নাম', 'woocommerce-resell-utility' ); ?>" />
-			</p>
-
-			<p class="woocommerce-form-row woocommerce-form-row--wide form-row form-row-wide">
-				<label for="wru_reg_phone"><?php esc_html_e( 'মোবাইল নাম্বার', 'woocommerce-resell-utility' ); ?> <span class="required">*</span></label>
-				<input type="tel" class="woocommerce-Input woocommerce-Input--text input-text" name="wru_reg_phone" id="wru_reg_phone" value="<?php echo ! empty( $_POST['wru_reg_phone'] ) ? esc_attr( wp_unslash( $_POST['wru_reg_phone'] ) ) : ''; ?>" placeholder="<?php esc_attr_e( 'যেমন: 017XXXXXXXX', 'woocommerce-resell-utility' ); ?>" required />
-			</p>
-
-			<p class="woocommerce-form-row woocommerce-form-row--wide form-row form-row-wide">
-				<label for="wru_reg_store_url"><?php esc_html_e( 'ফেসবুক পেজ বা ওয়েবসাইট লিংক (যেখানে পণ্য বিক্রয় করেন)', 'woocommerce-resell-utility' ); ?> <span class="required">*</span></label>
-				<input type="url" class="woocommerce-Input woocommerce-Input--text input-text" name="wru_reg_store_url" id="wru_reg_store_url" value="<?php echo ! empty( $_POST['wru_reg_store_url'] ) ? esc_attr( wp_unslash( $_POST['wru_reg_store_url'] ) ) : ''; ?>" placeholder="<?php esc_attr_e( 'https://facebook.com/yourpage বা ওয়েবসাইটের লিংক', 'woocommerce-resell-utility' ); ?>" required />
-			</p>
-
-			<p class="woocommerce-form-row woocommerce-form-row--wide form-row form-row-wide">
-				<label for="wru_reg_whatsapp"><?php esc_html_e( 'WhatsApp নাম্বার বা চ্যাট লিংক', 'woocommerce-resell-utility' ); ?> <span class="required">*</span></label>
-				<input type="text" class="woocommerce-Input woocommerce-Input--text input-text" name="wru_reg_whatsapp" id="wru_reg_whatsapp" value="<?php echo ! empty( $_POST['wru_reg_whatsapp'] ) ? esc_attr( wp_unslash( $_POST['wru_reg_whatsapp'] ) ) : ''; ?>" placeholder="<?php esc_attr_e( 'যেমন: 017XXXXXXXX বা https://wa.me/...', 'woocommerce-resell-utility' ); ?>" required />
-			</p>
-
-			<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
-				<div class="form-row">
-					<label for="wru_reg_nid_front" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">
-						<?php esc_html_e( 'NID কার্ডের সামনের ছবি (Front)', 'woocommerce-resell-utility' ); ?> <span class="required">*</span>
-					</label>
-					<input type="file" name="wru_reg_nid_front" id="wru_reg_nid_front" accept="image/*,application/pdf" required style="width:100%; font-size:12px;" />
-					<small style="color:#64748b; font-size:11px; display:block; margin-top:2px;"><?php esc_html_e( 'পরিষ্কার ও পাঠযোগ্য ছবি (JPG/PNG)', 'woocommerce-resell-utility' ); ?></small>
-				</div>
-				<div class="form-row">
-					<label for="wru_reg_nid_back" style="font-weight:600; font-size:13px; display:block; margin-bottom:4px;">
-						<?php esc_html_e( 'NID কার্ডের পেছনের ছবি (Back)', 'woocommerce-resell-utility' ); ?> <span class="required">*</span>
-					</label>
-					<input type="file" name="wru_reg_nid_back" id="wru_reg_nid_back" accept="image/*,application/pdf" required style="width:100%; font-size:12px;" />
-					<small style="color:#64748b; font-size:11px; display:block; margin-top:2px;"><?php esc_html_e( 'পরিষ্কার ও পাঠযোগ্য ছবি (JPG/PNG)', 'woocommerce-resell-utility' ); ?></small>
-				</div>
-			</div>
-
-			<?php
-			$captcha_n1    = wp_rand( 2, 9 );
-			$captcha_n2    = wp_rand( 1, 9 );
-			$captcha_sum   = $captcha_n1 + $captcha_n2;
-			$captcha_time  = time();
-			$captcha_token = wp_hash( (string) $captcha_sum . '|' . $captcha_time . '|wru_reg_math_salt' );
-			?>
-			<div class="woocommerce-form-row woocommerce-form-row--wide form-row form-row-wide" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:12px 14px; margin-top:8px; margin-bottom:12px;">
-				<label for="wru_reg_captcha" style="font-weight:700; color:#0f172a; display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-					<span style="display:inline-block; width:8px; height:8px; background:#16a34a; border-radius:50%;"></span>
-					<?php printf( esc_html__( 'স্প্যাম নিরাপত্তা পরীক্ষা: %d + %d = কত?', 'woocommerce-resell-utility' ), $captcha_n1, $captcha_n2 ); ?>
-					<span class="required">*</span>
-				</label>
-				<input type="hidden" name="wru_reg_captcha_token" value="<?php echo esc_attr( $captcha_token ); ?>" />
-				<input type="hidden" name="wru_reg_captcha_time" value="<?php echo esc_attr( $captcha_time ); ?>" />
-				<input type="number" class="woocommerce-Input woocommerce-Input--text input-text" name="wru_reg_captcha" id="wru_reg_captcha" placeholder="<?php esc_attr_e( 'উত্তর লিখুন...', 'woocommerce-resell-utility' ); ?>" required style="max-width:140px; font-weight:700;" />
-				<small style="color:#64748b; font-size:11px; display:block; margin-top:4px;"><?php esc_html_e( 'স্প্যামার ও রোবট রোধে সহজ গাণিতিক প্রশ্নের সঠিক উত্তর দিন।', 'woocommerce-resell-utility' ); ?></small>
-			</div>
-		</div>
-		<?php
-	}
-
-	/**
-	 * Validate custom Reseller Registration fields on submission.
-	 *
-	 * @param \WP_Error $errors Validation errors object.
-	 * @param string    $username Submitted username.
-	 * @param string    $password Submitted password.
-	 * @param string    $email Submitted email.
-	 * @return \WP_Error
-	 */
-	public function validate_registration_fields( $errors, $username, $password, $email ) {
-		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
-			return $errors;
-		}
-
-		// Only enforce on My Account registration form (do not block checkout account creation)
-		if ( ( function_exists( 'is_checkout' ) && is_checkout() ) || isset( $_POST['woocommerce_checkout_place_order'] ) || ( isset( $_GET['wc-ajax'] ) && 'checkout' === $_GET['wc-ajax'] ) || ( defined( 'DOING_AJAX' ) && DOING_AJAX && isset( $_POST['ship_to_different_address'] ) ) ) {
-			return $errors;
-		}
-
-		// Only enforce if registration form submitted with reseller fields
-		if ( ! isset( $_POST['register'] ) && ! isset( $_POST['wru_reg_phone'] ) ) {
-			return $errors;
-		}
-
-		if ( empty( $_POST['wru_reg_phone'] ) || '' === trim( (string) $_POST['wru_reg_phone'] ) ) {
-			$errors->add( 'wru_reg_phone_error', __( 'দয়া করে আপনার মোবাইল নাম্বার প্রদান করুন।', 'woocommerce-resell-utility' ) );
-		}
-
-		if ( empty( $_POST['wru_reg_store_url'] ) || '' === trim( (string) $_POST['wru_reg_store_url'] ) ) {
-			$errors->add( 'wru_reg_store_url_error', __( 'দয়া করে আপনার ফেসবুক পেজ বা ওয়েবসাইট লিংক প্রদান করুন।', 'woocommerce-resell-utility' ) );
-		}
-
-		if ( empty( $_POST['wru_reg_whatsapp'] ) || '' === trim( (string) $_POST['wru_reg_whatsapp'] ) ) {
-			$errors->add( 'wru_reg_whatsapp_error', __( 'দয়া করে আপনার WhatsApp নাম্বার বা চ্যাট লিংক প্রদান করুন।', 'woocommerce-resell-utility' ) );
-		}
-
-		// Validate anti-spam math captcha
-		$submitted_ans   = isset( $_POST['wru_reg_captcha'] ) ? trim( (string) $_POST['wru_reg_captcha'] ) : '';
-		$submitted_token = isset( $_POST['wru_reg_captcha_token'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reg_captcha_token'] ) ) : '';
-		$submitted_time  = isset( $_POST['wru_reg_captcha_time'] ) ? absint( $_POST['wru_reg_captcha_time'] ) : 0;
-
-		if ( '' === $submitted_ans || empty( $submitted_token ) ) {
-			$errors->add( 'wru_reg_captcha_empty', __( 'অনুগ্রহ করে স্প্যাম নিরাপত্তা গণিতের উত্তর প্রদান করুন।', 'woocommerce-resell-utility' ) );
-		} else {
-			$expected_hash = wp_hash( $submitted_ans . '|' . $submitted_time . '|wru_reg_math_salt' );
-			// Tokens expire after one hour so a solved pair cannot be replayed forever.
-			if ( ! hash_equals( $expected_hash, $submitted_token ) || $submitted_time < time() - HOUR_IN_SECONDS ) {
-				$errors->add( 'wru_reg_captcha_invalid', __( 'স্প্যাম নিরাপত্তা গণিতের উত্তর ভুল হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ) );
-			}
-		}
-
-		$allowed_exts = array( 'jpg', 'jpeg', 'png', 'webp', 'pdf' );
-		$max_size     = 5 * 1024 * 1024; // 5MB
-
-		// Validate NID Front
-		if ( empty( $_FILES['wru_reg_nid_front']['name'] ) || ! empty( $_FILES['wru_reg_nid_front']['error'] ) ) {
-			$errors->add( 'wru_reg_nid_front_error', __( 'দয়া করে আপনার NID কার্ডের সামনের অংশের ছবি আপলোড করুন।', 'woocommerce-resell-utility' ) );
-		} else {
-			$ext_front = strtolower( pathinfo( $_FILES['wru_reg_nid_front']['name'], PATHINFO_EXTENSION ) );
-			if ( ! in_array( $ext_front, $allowed_exts, true ) ) {
-				$errors->add( 'wru_reg_nid_front_mime', __( 'NID সামনের ছবি অবশ্যই JPG, PNG, WEBP অথবা PDF ফরম্যাটে হতে হবে।', 'woocommerce-resell-utility' ) );
-			}
-			if ( ! empty( $_FILES['wru_reg_nid_front']['size'] ) && $_FILES['wru_reg_nid_front']['size'] > $max_size ) {
-				$errors->add( 'wru_reg_nid_front_size', __( 'NID সামনের ছবির সাইজ সর্বোচ্চ ৫ মেগাবাইট (5MB) হতে পারবে।', 'woocommerce-resell-utility' ) );
-			}
-		}
-
-		// Validate NID Back
-		if ( empty( $_FILES['wru_reg_nid_back']['name'] ) || ! empty( $_FILES['wru_reg_nid_back']['error'] ) ) {
-			$errors->add( 'wru_reg_nid_back_error', __( 'দয়া করে আপনার NID কার্ডের পেছনের অংশের ছবি আপলোড করুন।', 'woocommerce-resell-utility' ) );
-		} else {
-			$ext_back = strtolower( pathinfo( $_FILES['wru_reg_nid_back']['name'], PATHINFO_EXTENSION ) );
-			if ( ! in_array( $ext_back, $allowed_exts, true ) ) {
-				$errors->add( 'wru_reg_nid_back_mime', __( 'NID পেছনের ছবি অবশ্যই JPG, PNG, WEBP অথবা PDF ফরম্যাটে হতে হবে।', 'woocommerce-resell-utility' ) );
-			}
-			if ( ! empty( $_FILES['wru_reg_nid_back']['size'] ) && $_FILES['wru_reg_nid_back']['size'] > $max_size ) {
-				$errors->add( 'wru_reg_nid_back_size', __( 'NID পেছনের ছবির সাইজ সর্বোচ্চ ৫ মেগাবাইট (5MB) হতে পারবে।', 'woocommerce-resell-utility' ) );
-			}
-		}
-
-		return $errors;
-	}
-
-	/**
-	 * Save Reseller Registration details and files upon customer account creation.
-	 *
-	 * @param int $customer_id Newly created customer user ID.
-	 */
-	public function handle_reseller_registration( $customer_id ) {
-		if ( ! $customer_id ) {
-			return;
-		}
-
-		// Only process if reseller fields were submitted
-		if ( ! isset( $_POST['wru_reg_phone'] ) && ! isset( $_FILES['wru_reg_nid_front'] ) ) {
-			return;
-		}
-
-		// Upload NID front & back into the private directory
-		if ( ! empty( $_FILES['wru_reg_nid_front']['name'] ) ) {
-			self::store_nid_upload( $customer_id, 'front', $_FILES['wru_reg_nid_front'] );
-		}
-		if ( ! empty( $_FILES['wru_reg_nid_back']['name'] ) ) {
-			self::store_nid_upload( $customer_id, 'back', $_FILES['wru_reg_nid_back'] );
-		}
-
-		$phone   = isset( $_POST['wru_reg_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reg_phone'] ) ) : '';
-		$store   = isset( $_POST['wru_reg_store_url'] ) ? esc_url_raw( wp_unslash( $_POST['wru_reg_store_url'] ) ) : '';
-		$wa      = isset( $_POST['wru_reg_whatsapp'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reg_whatsapp'] ) ) : '';
-		$company = isset( $_POST['wru_reg_company_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_reg_company_name'] ) ) : '';
-
-		if ( ! empty( $phone ) ) {
-			update_user_meta( $customer_id, '_wru_reseller_phone', $phone );
-			update_user_meta( $customer_id, 'billing_phone', $phone );
-			update_user_meta( $customer_id, '_wru_payout_number', $phone );
-		}
-		if ( ! empty( $store ) ) {
-			update_user_meta( $customer_id, '_wru_reseller_store_url', $store );
-		}
-		if ( ! empty( $wa ) ) {
-			update_user_meta( $customer_id, '_wru_reseller_whatsapp', $wa );
-		}
-		if ( ! empty( $company ) ) {
-			update_user_meta( $customer_id, '_wru_reseller_company_name', $company );
-			update_user_meta( $customer_id, 'billing_company', $company );
-		}
-
-		// Application status pending (user retains customer role until admin approval)
-		update_user_meta( $customer_id, '_wru_reseller_status', 'pending' );
-		update_user_meta( $customer_id, '_wru_reseller_applied_at', current_time( 'mysql' ) );
-
-		// Notify Admin via email
-		$admin_email = get_option( 'admin_email' );
-		if ( $admin_email ) {
-			$user    = get_userdata( $customer_id );
-			$subject = sprintf( __( '[নতুন রিসেলার আবেদন] %s (%s)', 'woocommerce-resell-utility' ), $user ? $user->display_name : 'New User', $phone );
-			$body    = sprintf(
-				__( "নতুন রিসেলার পার্টনার রেজিস্ট্রেশন আবেদন জমা পড়েছে:\n\nনাম: %s\nইমেইল: %s\nমোবাইল: %s\nWhatsApp: %s\nপেজ / ওয়েবসাইট: %s\n\nএডমিন প্যানেলে আবেদন ও NID কার্ড যাচাই করে অনুমোদন দিন:\n%s", 'woocommerce-resell-utility' ),
-				$user ? $user->display_name : 'N/A',
-				$user ? $user->user_email : 'N/A',
-				$phone,
-				$wa,
-				$store,
-				admin_url( 'admin.php?page=wru-resellers&tab=pending_resellers' )
-			);
-			wp_mail( $admin_email, $subject, $body );
-		}
 	}
 }

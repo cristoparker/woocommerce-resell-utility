@@ -21,16 +21,20 @@ class WRU_Settings {
 	const OPTION_CANCELLATION_FEE    = 'wru_cancellation_fee';
 	const OPTION_MARKET_LABEL        = 'wru_market_price_label';
 	const OPTION_RESELLER_LABEL      = 'wru_reseller_price_label';
-	const OPTION_HIDE_PRICES         = 'wru_hide_prices_for_non_resellers';
 	const OPTION_REMOVE_INV_DATA     = 'wru_remove_inventory_data_on_uninstall';
+	const OPTION_REG_PAGE_ID         = 'wru_reseller_registration_page_id';
 
 	/**
-	 * Check if product prices are hidden from everyone except approved resellers & store managers.
+	 * URL of the dedicated reseller registration page (empty if it does not exist).
 	 *
-	 * @return bool
+	 * @return string
 	 */
-	public static function are_prices_hidden() {
-		return 'yes' === get_option( self::OPTION_HIDE_PRICES, 'yes' );
+	public static function get_reseller_registration_url() {
+		$page_id = (int) get_option( self::OPTION_REG_PAGE_ID, 0 );
+		if ( $page_id && 'publish' === get_post_status( $page_id ) ) {
+			return (string) get_permalink( $page_id );
+		}
+		return '';
 	}
 
 	/**

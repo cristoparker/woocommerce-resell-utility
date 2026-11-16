@@ -40,7 +40,7 @@ class WRU_Reseller_Fields {
 	public function render_reseller_input_field() {
 		global $product;
 
-		if ( ! is_a( $product, 'WC_Product' ) || ! WRU_Price_Display::can_view_prices() ) {
+		if ( ! is_a( $product, 'WC_Product' ) || ! WRU_Price_Display::is_reseller_mode() ) {
 			return;
 		}
 
@@ -108,7 +108,7 @@ class WRU_Reseller_Fields {
 	 * Render reseller product tools: One-click Image Download & Copy Description.
 	 */
 	public function render_product_tools() {
-		if ( ! WRU_Settings::are_product_tools_enabled() || ! WRU_Price_Display::can_view_prices() ) {
+		if ( ! WRU_Settings::are_product_tools_enabled() || ! WRU_Price_Display::is_reseller_mode() ) {
 			return;
 		}
 
@@ -159,7 +159,8 @@ class WRU_Reseller_Fields {
 	 * @return bool
 	 */
 	public function validate_reseller_price_on_add( $passed, $product_id, $quantity, $variation_id = 0 ) {
-		if ( ! isset( $_POST['wru_reseller_price'] ) ) {
+		// Only resellers have a selling-price input; normal customers buy at the normal price.
+		if ( ! WRU_Price_Display::is_reseller_mode() || ! isset( $_POST['wru_reseller_price'] ) ) {
 			return $passed;
 		}
 

@@ -151,3 +151,14 @@ Navigate to **WordPress Admin -> WooCommerce -> Resell Utility**:
 - **Cart & Checkout Blocks:** Fully compatible
 - **PHP:** 7.4, 8.0, 8.1, 8.2, 8.3+
 
+
+## Normal store + reseller store on one site
+
+The plugin now runs a normal WooCommerce store and a reseller store side by side:
+
+- **Normal visitors and customers** see the stock WooCommerce prices, product pages, cart, checkout and My Account registration. None of the reseller features (market/reseller price blocks, selling-price input, Buy Now, product tools, reseller menus) are shown to them.
+- **Resellers register on their own page** (`[wru_reseller_registration]`, auto-created as *Reseller Registration* and linked from the My Account login screen). Applicants submit business details and NID photos; a logged-in customer can apply with their existing account. The admin approves them in *Resellers → Pending*.
+- **Approved resellers** get the reseller storefront: market + reseller prices, their own selling price with live profit, Buy Now / quick order, product tools and the Reseller Dashboard + Payouts in My Account.
+- **One order list.** Every order is a normal WooCommerce order. Orders placed by approved resellers also carry the resell data (collection amount, profit, packaging) and show a *Reseller* badge in the *অর্ডার ধরন* column; normal orders are left untouched and are not part of reseller balances.
+
+Note: orders created by earlier versions were all flagged as resell orders and stay that way.

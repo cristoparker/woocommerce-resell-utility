@@ -91,6 +91,7 @@ final class WooCommerce_Resell_Utility {
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-admin-settings.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-invoice-email.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-manager.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-registration.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory-db.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory-admin.php';
@@ -123,6 +124,7 @@ final class WooCommerce_Resell_Utility {
 		WRU_Admin_Settings::init();
 		WRU_Invoice_Email::init();
 		WRU_Reseller_Manager::init();
+		WRU_Reseller_Registration::init();
 
 		// Inventory: create/upgrade tables when the schema version changes (also covers updates without re-activation).
 		WRU_Inventory_DB::maybe_install();
@@ -174,16 +176,19 @@ final class WooCommerce_Resell_Utility {
 			true
 		);
 
+		// Packaging/min-price settings are reseller business data: only resellers receive them.
+		$is_reseller_mode = WRU_Price_Display::is_reseller_mode();
+
 		wp_localize_script( 'wru-frontend-scripts', 'wru_vars', array(
 			'ajax_url'        => admin_url( 'admin-ajax.php' ),
 			'checkout_url'    => function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : '',
 			'nonce'           => wp_create_nonce( 'wru_frontend_nonce' ),
 			'currency_symbol' => get_woocommerce_currency_symbol(),
-			'packaging_fee'   => WRU_Settings::get_packaging_fee(),
-			'packaging_type'  => WRU_Settings::get_packaging_type(),
-			'is_min_enforced' => WRU_Settings::is_min_price_enforced() ? 1 : 0,
+			'packaging_fee'   => $is_reseller_mode ? WRU_Settings::get_packaging_fee() : 0,
+			'packaging_type'  => $is_reseller_mode ? WRU_Settings::get_packaging_type() : 'order',
+			'is_min_enforced' => ( $is_reseller_mode && WRU_Settings::is_min_price_enforced() ) ? 1 : 0,
 			'user_email'      => is_user_logged_in() ? wp_get_current_user()->user_email : '',
-			'is_reseller'     => WRU_Reseller_Manager::is_reseller() ? 1 : 0,
+			'is_reseller'     => $is_reseller_mode ? 1 : 0,
 			'reseller_status' => is_user_logged_in() ? get_user_meta( get_current_user_id(), '_wru_reseller_status', true ) : '',
 			'myaccount_url'   => function_exists( 'wc_get_page_permalink' ) ? wc_get_page_permalink( 'myaccount' ) : '',
 			'courier_collection_amount' => 0,
@@ -201,6 +206,7 @@ final class WooCommerce_Resell_Utility {
 	 */
 	public function activate() {
 		WRU_Inventory_DB::install();
+		WRU_Reseller_Registration::maybe_create_page();
 		WRU_Reseller_Dashboard::init();
 		if ( ! get_role( 'wru_reseller' ) ) {
 			add_role(
