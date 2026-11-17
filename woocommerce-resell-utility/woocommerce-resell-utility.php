@@ -92,6 +92,7 @@ final class WooCommerce_Resell_Utility {
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-invoice-email.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-manager.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-reseller-registration.php';
+		require_once WRU_PLUGIN_DIR . 'includes/class-wru-shipping.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory-db.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory.php';
 		require_once WRU_PLUGIN_DIR . 'includes/class-wru-inventory-admin.php';
@@ -125,6 +126,7 @@ final class WooCommerce_Resell_Utility {
 		WRU_Invoice_Email::init();
 		WRU_Reseller_Manager::init();
 		WRU_Reseller_Registration::init();
+		WRU_Shipping::init();
 
 		// Inventory: create/upgrade tables when the schema version changes (also covers updates without re-activation).
 		WRU_Inventory_DB::maybe_install();

@@ -162,3 +162,12 @@ The plugin now runs a normal WooCommerce store and a reseller store side by side
 - **One order list.** Every order is a normal WooCommerce order. Orders placed by approved resellers also carry the resell data (collection amount, profit, packaging) and show a *Reseller* badge in the *অর্ডার ধরন* column; normal orders are left untouched and are not part of reseller balances.
 
 Note: orders created by earlier versions were all flagged as resell orders and stay that way.
+
+## Custom delivery charge per product / location
+
+In the product edit screen (*General* tab → *রিসেলিং কাস্টম খরচ*):
+
+- **কাস্টম ডেলিভারি চার্জ** – a delivery charge for this product in every location. Blank = the store's default WooCommerce delivery charge.
+- **লোকেশন ভিত্তিক ডেলিভারি চার্জ** – add rows of *country / state (district)* + charge. The customer's delivery address decides which applies: matching state, then matching country, then the product's all-locations charge, then the default.
+
+A cart ships as one parcel, so the delivery charge is the highest charge among its items; products with no custom charge count at the default rate. Free shipping and local pickup rates are never changed. Developers can adjust results with the `wru_custom_shipping_cost` and `wru_shipping_skip_methods` filters.
