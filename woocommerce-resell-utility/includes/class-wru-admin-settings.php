@@ -92,7 +92,8 @@ class WRU_Admin_Settings {
 		$shop_buy    = isset( $_POST[ WRU_Settings::OPTION_ENABLE_SHOP_BUY_NOW ] ) ? 'yes' : 'no';
 		$tools       = isset( $_POST[ WRU_Settings::OPTION_ENABLE_TOOLS ] ) ? 'yes' : 'no';
 		$dashboard   = isset( $_POST[ WRU_Settings::OPTION_ENABLE_DASHBOARD ] ) ? 'yes' : 'no';
-		$cancel_fee  = isset( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ? (float) sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ) : 10.0;
+		$remove_inv  = isset( $_POST[ WRU_Settings::OPTION_REMOVE_INV_DATA ] ) ? 'yes' : 'no';
+		$cancel_fee = isset( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ? (float) sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_CANCELLATION_FEE ] ) ) : 10.0;
 		$market_lbl  = isset( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_MARKET_LABEL ] ) ) : '';
 		$resell_lbl  = isset( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ? sanitize_text_field( wp_unslash( $_POST[ WRU_Settings::OPTION_RESELLER_LABEL ] ) ) : '';
 		$inv_store   = isset( $_POST['wru_invoice_store_name'] ) ? sanitize_text_field( wp_unslash( $_POST['wru_invoice_store_name'] ) ) : '';
@@ -106,6 +107,7 @@ class WRU_Admin_Settings {
 		update_option( WRU_Settings::OPTION_ENABLE_SHOP_BUY_NOW, $shop_buy );
 		update_option( WRU_Settings::OPTION_ENABLE_TOOLS, $tools );
 		update_option( WRU_Settings::OPTION_ENABLE_DASHBOARD, $dashboard );
+		update_option( WRU_Settings::OPTION_REMOVE_INV_DATA, $remove_inv, false );
 		update_option( WRU_Settings::OPTION_CANCELLATION_FEE, max( 0, $cancel_fee ) );
 		update_option( 'wru_invoice_store_name', $inv_store );
 		update_option( 'wru_invoice_store_phone', $inv_phone );
@@ -132,6 +134,7 @@ class WRU_Admin_Settings {
 		$shop_buy    = WRU_Settings::is_shop_buy_now_enabled();
 		$tools       = WRU_Settings::are_product_tools_enabled();
 		$dashboard   = WRU_Settings::is_dashboard_enabled();
+		$remove_inv  = 'yes' === get_option( WRU_Settings::OPTION_REMOVE_INV_DATA, 'no' );
 		$cancel_fee  = WRU_Settings::get_cancellation_fee();
 		$market_lbl  = WRU_Settings::get_market_label();
 		$resell_lbl  = WRU_Settings::get_reseller_label();
@@ -314,6 +317,23 @@ class WRU_Admin_Settings {
 					</table>
 				</div>
 
+				<!-- Reseller registration page -->
+				<div class="wru-settings-card">
+					<h2><?php esc_html_e( 'রিসেলার রেজিস্ট্রেশন পেজ', 'woocommerce-resell-utility' ); ?></h2>
+					<?php $reg_url = WRU_Settings::get_reseller_registration_url(); ?>
+					<p class="description">
+						<?php esc_html_e( 'সাধারণ কাস্টমাররা স্বাভাবিক রেজিস্ট্রেশন ও কেনাকাটা করবেন। রিসেলাররা শুধু নিচের আলাদা পেজ থেকে আবেদন করবেন; অনুমোদনের পর তারা রিসেলার মূল্য, নিজের বিক্রয়মূল্য ও ড্যাশবোর্ড দেখতে পাবেন। সব অর্ডার একই WooCommerce অর্ডার লিস্টে থাকবে।', 'woocommerce-resell-utility' ); ?>
+					</p>
+					<p>
+						<?php if ( $reg_url ) : ?>
+							<a href="<?php echo esc_url( $reg_url ); ?>" target="_blank" rel="noopener"><code><?php echo esc_html( $reg_url ); ?></code></a>
+						<?php else : ?>
+							<em><?php esc_html_e( 'পেজটি পাওয়া যায়নি। একটি পেজে এই শর্টকোড বসান:', 'woocommerce-resell-utility' ); ?></em>
+						<?php endif; ?>
+						&nbsp;<?php esc_html_e( 'শর্টকোড:', 'woocommerce-resell-utility' ); ?> <code>[wru_reseller_registration]</code>
+					</p>
+				</div>
+
 				<!-- Custom Labels -->
 				<div class="wru-settings-card">
 					<h2><?php esc_html_e( 'মূল্য প্রদর্শন লেবেল (Price Labels)', 'woocommerce-resell-utility' ); ?></h2>
@@ -353,6 +373,13 @@ class WRU_Admin_Settings {
 						<li><strong><?php esc_html_e( 'ক্যাশআউট হিস্ট্রি:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'কাস্টম পোস্ট টাইপ (wru_cashout)-এ সেভ থাকে, যা সাইট ব্যাকআপে স্বাভাবিকভাবেই অন্তর্ভুক্ত থাকে।', 'woocommerce-resell-utility' ); ?></li>
 						<li><strong><?php esc_html_e( 'ভবিষ্যতে পুনরায় ইন্সটল:', 'woocommerce-resell-utility' ); ?></strong> <?php esc_html_e( 'প্লাগইন ডিলিট করার পর ভবিষ্যতে আবার আপলোড ও অ্যাক্টিভ করলে পূর্বের সকল তথ্য সাথে সাথে পুনরায় লোড হয়ে যাবে।', 'woocommerce-resell-utility' ); ?></li>
 					</ul>
+					<p style="margin-top: 14px;">
+						<label>
+							<input type="checkbox" name="<?php echo esc_attr( WRU_Settings::OPTION_REMOVE_INV_DATA ); ?>" value="yes" <?php checked( $remove_inv, true ); ?> />
+							<strong><?php esc_html_e( 'Remove inventory data on uninstall', 'woocommerce-resell-utility' ); ?></strong>
+						</label>
+						<br><span class="description"><?php esc_html_e( 'Off by default. When ticked, deleting the plugin also drops the supplier, purchase and stock-movement tables. WooCommerce stock levels and all reseller data are never touched.', 'woocommerce-resell-utility' ); ?></span>
+					</p>
 				</div>
 
 				<p class="submit">

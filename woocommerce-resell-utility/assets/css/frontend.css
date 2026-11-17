@@ -123,6 +123,11 @@
 	float: none !important;
 	box-sizing: border-box !important;
 	position: relative !important;
+	background: #ffffff;
+	border: 1px solid #f3e6da;
+	border-radius: 16px;
+	padding: 12px !important;
+	transition: box-shadow .2s ease, transform .2s ease;
 }
 
 /* Ensure product thumbnail image fills its width */
@@ -185,7 +190,7 @@
 	font-size: 0.82rem !important;
 	font-weight: 600 !important;
 	line-height: 1.2 !important;
-	border-radius: 6px !important;
+	border-radius: 999px !important;
 	text-align: center !important;
 	white-space: nowrap !important;
 	box-sizing: border-box !important;
@@ -196,17 +201,17 @@
 
 /* Loop Buy Now Button styling */
 .wru-loop-actions .wru-loop-buy-now-btn {
-	background: #0284c7 !important;
+	background: #c2410c !important;
 	color: #ffffff !important;
-	border: 1px solid #0284c7 !important;
+	border: 1px solid #c2410c !important;
 }
 
 .wru-loop-actions .wru-loop-buy-now-btn:hover {
-	background: #0369a1 !important;
+	background: #9a3412 !important;
 	color: #ffffff !important;
-	border-color: #0369a1 !important;
+	border-color: #9a3412 !important;
 	transform: translateY(-1px);
-	box-shadow: 0 4px 10px rgba(2, 132, 199, 0.25);
+	box-shadow: 0 4px 10px rgba(194,65,12, 0.25);
 }
 
 /* Tablet: 2 Columns */
@@ -294,7 +299,7 @@
 	display: block;
 	max-height: 80px;
 	margin-top: 6px;
-	border-radius: 6px;
+	border-radius: 12px;
 	border: 1px solid #cbd5e1;
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
@@ -315,8 +320,8 @@
 }
 
 .wru-reseller-box:focus-within {
-	border-color: #0284c7;
-	box-shadow: 0 4px 14px rgba(2, 132, 199, 0.12);
+	border-color: #c2410c;
+	box-shadow: 0 4px 14px rgba(194,65,12, 0.12);
 }
 
 .wru-box-header {
@@ -331,8 +336,8 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	background: #e0f2fe;
-	color: #0369a1;
+	background: #fff1e0;
+	color: #9a3412;
 	font-size: 0.75rem;
 	font-weight: 700;
 	padding: 3px 8px;
@@ -383,9 +388,9 @@
 }
 
 .wru-reseller-input:focus {
-	border-color: #0284c7 !important;
+	border-color: #c2410c !important;
 	outline: none !important;
-	box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2) !important;
+	box-shadow: 0 0 0 3px rgba(194,65,12, 0.2) !important;
 }
 
 /* Dynamic Live Profit Breakdown Box */
@@ -403,7 +408,7 @@
 	flex-direction: column;
 	background: #ffffff;
 	padding: 8px 12px;
-	border-radius: 6px;
+	border-radius: 12px;
 	border: 1px solid #e2e8f0;
 }
 
@@ -443,7 +448,7 @@
 	font-weight: 600;
 	background: #fef2f2;
 	padding: 6px 10px;
-	border-radius: 6px;
+	border-radius: 12px;
 	border: 1px solid #fca5a5;
 }
 
@@ -475,7 +480,7 @@
 	gap: 8px !important;
 	min-height: 46px !important;
 	padding: 10px 20px !important;
-	background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+	background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%) !important;
 	color: #ffffff !important;
 	font-size: 1rem !important;
 	font-weight: 700 !important;
@@ -483,13 +488,13 @@
 	border-radius: 8px !important;
 	cursor: pointer !important;
 	transition: all 0.2s ease !important;
-	box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25) !important;
+	box-shadow: 0 4px 12px rgba(194,65,12, 0.25) !important;
 }
 
 .wru-buy-now-btn:hover {
-	background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
+	background: linear-gradient(135deg, #9a3412 0%, #7c2d12 100%) !important;
 	transform: translateY(-1px);
-	box-shadow: 0 6px 16px rgba(2, 132, 199, 0.35) !important;
+	box-shadow: 0 6px 16px rgba(194,65,12, 0.35) !important;
 }
 
 
@@ -511,7 +516,7 @@
 	padding: 8px 14px;
 	font-size: 0.85rem;
 	font-weight: 600;
-	border-radius: 6px;
+	border-radius: 999px;
 	border: 1px solid #cbd5e1;
 	background: #ffffff;
 	color: #334155;
@@ -527,8 +532,8 @@
 }
 
 .wru-btn-copy:hover {
-	border-color: #0284c7;
-	color: #0284c7;
+	border-color: #c2410c;
+	color: #c2410c;
 }
 
 .wru-btn-download:hover {
@@ -541,7 +546,7 @@
 	position: fixed;
 	bottom: 30px;
 	right: 30px;
-	background: #0f172a;
+	background: #c2410c;
 	color: #ffffff;
 	padding: 12px 20px;
 	border-radius: 8px;
@@ -622,8 +627,8 @@
 
 .wru-modal-badge {
 	display: inline-block;
-	background: #e0f2fe;
-	color: #0369a1;
+	background: #fff1e0;
+	color: #9a3412;
 	font-size: 0.75rem;
 	font-weight: 700;
 	padding: 3px 10px;
@@ -674,7 +679,7 @@
 	font-size: 1rem !important;
 	font-weight: 700 !important;
 	text-align: center !important;
-	border-radius: 6px !important;
+	border-radius: 12px !important;
 	border: 1.5px solid #cbd5e1 !important;
 }
 
@@ -704,7 +709,7 @@
 	font-size: 1.05rem !important;
 	font-weight: 700 !important;
 	border-radius: 8px !important;
-	background: #0284c7 !important;
+	background: #c2410c !important;
 	color: #ffffff !important;
 	border: none !important;
 	cursor: pointer !important;
@@ -715,7 +720,7 @@
 }
 
 .wru-modal-submit-btn:hover {
-	background: #0369a1 !important;
+	background: #9a3412 !important;
 }
 
 
@@ -773,7 +778,7 @@
 .wru-order-profit-item.wru-profit-highlight {
 	background: #ecfdf5;
 	padding: 6px 10px;
-	border-radius: 6px;
+	border-radius: 12px;
 }
 
 .wru-profit-number {
@@ -801,7 +806,7 @@
 	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
-	background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+	background: linear-gradient(135deg, #c2410c 0%, #ea580c 100%);
 	color: #ffffff;
 	border-radius: 12px;
 	padding: 24px;
@@ -817,7 +822,7 @@
 
 .wru-user-welcome p {
 	margin: 0;
-	color: #94a3b8;
+	color: #ffe4cc;
 	font-size: 0.95rem;
 }
 
@@ -877,8 +882,8 @@
 }
 
 .wru-stat-completed .wru-stat-icon {
-	background: #e0f2fe;
-	color: #0284c7;
+	background: #fff1e0;
+	color: #c2410c;
 }
 
 .wru-stat-orders .wru-stat-icon {
@@ -958,7 +963,7 @@
 }
 
 .wru-save-payout-btn {
-	background: #0f172a !important;
+	background: #c2410c !important;
 	color: #ffffff !important;
 	padding: 10px 20px !important;
 	border-radius: 8px !important;
@@ -969,7 +974,7 @@
 }
 
 .wru-save-payout-btn:hover {
-	background: #1e293b !important;
+	background: #9a3412 !important;
 }
 
 /* Orders Table */
@@ -1016,7 +1021,7 @@
 .wru-status-badge {
 	display: inline-block;
 	padding: 3px 8px;
-	border-radius: 6px;
+	border-radius: 999px;
 	font-size: 0.78rem;
 	font-weight: 700;
 }
@@ -1051,7 +1056,7 @@
 .wru-view-order-btn {
 	padding: 5px 12px !important;
 	font-size: 0.8rem !important;
-	border-radius: 6px !important;
+	border-radius: 999px !important;
 }
 
 .wru-empty-state {
@@ -1069,13 +1074,53 @@
 
 @keyframes wruPulseGlow {
 	0% {
-		box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.5);
+		box-shadow: 0 0 0 0 rgba(194,65,12, 0.5);
 	}
 	50% {
-		box-shadow: 0 0 0 10px rgba(2, 132, 199, 0.2);
+		box-shadow: 0 0 0 10px rgba(194,65,12, 0.2);
 	}
 	100% {
 		box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
 	}
 }
 
+
+/* Reseller-only price notice */
+.wru-price-hidden {
+	display: inline-block;
+	font-size: 0.85em;
+	font-weight: 600;
+	color: #b45309;
+	line-height: 1.4;
+}
+
+.wru-price-hidden a {
+	color: #c2410c;
+	text-decoration: underline;
+}
+
+/* ==========================================================================
+   Reseller registration page ([wru_reseller_registration])
+   ========================================================================== */
+.wru-reg-wrap { max-width: 640px; margin: 0 auto; }
+.wru-reg-intro { background: #fff7ed; border: 1px solid #f3e6da; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+.wru-reg-intro h3 { margin: 0 0 6px; color: #c2410c; font-size: 1.1rem; }
+.wru-reg-intro p { margin: 0 0 6px; color: #15803d; font-size: 0.9rem; line-height: 1.55; }
+.wru-reg-form .form-row { margin-bottom: 14px; }
+.wru-reg-form label { display: block; font-weight: 600; margin-bottom: 4px; }
+.wru-reg-form .input-text { width: 100%; }
+.wru-reg-form small { display: block; color: #64748b; margin-top: 2px; }
+.wru-reg-nid-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.wru-reg-captcha { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+.wru-reg-captcha .input-text { max-width: 140px; font-weight: 700; }
+.wru-reg-notice { border: 1.5px solid #cbd5e1; border-radius: 12px; padding: 28px; text-align: center; background: #fff; }
+.wru-reg-notice h3 { margin: 0 0 8px; }
+.wru-reg-notice-success { border-color: #86efac; background: #f0fdf4; }
+.wru-reg-notice-error { border-color: #fca5a5; background: #fef2f2; }
+.wru-reseller-signup-link { margin-top: 18px; text-align: center; }
+@media (max-width: 600px) { .wru-reg-nid-grid { grid-template-columns: 1fr; } }
+
+/* v2.3.0 – Khushir Baksho design: white mode, orange accent */
+.woocommerce ul.products li.product:hover { box-shadow: 0 10px 24px rgba(194,65,12,.12); transform: translateY(-2px); }
+.woocommerce ul.products li.product a img { border-radius: 12px; }
+.wru-dashboard-header { border-radius: 20px; }

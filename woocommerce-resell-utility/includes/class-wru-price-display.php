@@ -2,6 +2,10 @@
 /**
  * Market & Reseller Price Display Module.
  *
+ * Normal visitors and customers see the stock WooCommerce prices and checkout. Everything in this
+ * class (market/reseller price blocks, sale badge removal, flattened cart prices) only applies to
+ * approved resellers.
+ *
  * @package WooCommerce_Resell_Utility
  */
 
@@ -23,7 +27,7 @@ class WRU_Price_Display {
 	}
 
 	/**
-	 * Register WooCommerce hooks.
+	 * Register WooCommerce hooks. Every callback bails out unless the current user is a reseller.
 	 */
 	public function register_hooks() {
 		if ( ! is_admin() || wp_doing_ajax() ) {
@@ -37,6 +41,26 @@ class WRU_Price_Display {
 	}
 
 	/**
+	 * Whether the current visitor gets the reseller storefront (reseller prices, own-price input,
+	 * Buy Now tools). Only approved resellers qualify; guests, customers and pending applicants
+	 * shop the normal store.
+	 *
+	 * @return bool
+	 */
+	public static function is_reseller_mode() {
+		static $cache = array();
+
+		$user_id = get_current_user_id();
+		if ( ! $user_id ) {
+			return false;
+		}
+		if ( ! isset( $cache[ $user_id ] ) ) {
+			$cache[ $user_id ] = (bool) apply_filters( 'wru_is_reseller_mode', WRU_Reseller_Manager::is_active_reseller( $user_id ), $user_id );
+		}
+		return $cache[ $user_id ];
+	}
+
+	/**
 	 * In Cart & Checkout, suppress dual regular/sale price format (preventing "Save ৳..." and "Previous price")
 	 * and output purely the active reseller sale price.
 	 *
@@ -46,7 +70,7 @@ class WRU_Price_Display {
 	 * @return string
 	 */
 	public function filter_format_sale_price( $price, $regular_price, $sale_price ) {
-		if ( is_cart() || is_checkout() || wp_doing_ajax() || did_action( 'woocommerce_before_cart' ) || did_action( 'woocommerce_before_checkout_form' ) ) {
+		if ( self::is_reseller_mode() && ( is_cart() || is_checkout() || wp_doing_ajax() || did_action( 'woocommerce_before_cart' ) || did_action( 'woocommerce_before_checkout_form' ) ) ) {
 			return wc_price( $sale_price );
 		}
 		return $price;
@@ -61,7 +85,7 @@ class WRU_Price_Display {
 	 * @return array
 	 */
 	public function filter_store_api_cart_line_item_data( $item_data, $cart_item ) {
-		if ( isset( $item_data['prices'] ) && is_array( $item_data['prices'] ) ) {
+		if ( self::is_reseller_mode() && isset( $item_data['prices'] ) && is_array( $item_data['prices'] ) ) {
 			if ( isset( $item_data['prices']['price'] ) ) {
 				$item_data['prices']['regular_price'] = $item_data['prices']['price'];
 				$item_data['prices']['sale_price']    = $item_data['prices']['price'];
@@ -79,7 +103,7 @@ class WRU_Price_Display {
 	 * @return string
 	 */
 	public function filter_sale_flash( $html, $post, $product ) {
-		if ( is_admin() && ! wp_doing_ajax() ) {
+		if ( ( is_admin() && ! wp_doing_ajax() ) || ! self::is_reseller_mode() ) {
 			return $html;
 		}
 
@@ -99,7 +123,7 @@ class WRU_Price_Display {
 			return $price_html;
 		}
 
-		if ( ! is_a( $product, 'WC_Product' ) ) {
+		if ( ! is_a( $product, 'WC_Product' ) || ! self::is_reseller_mode() ) {
 			return $price_html;
 		}
 
@@ -311,7 +335,7 @@ class WRU_Price_Display {
 	 * @return array
 	 */
 	public function filter_available_variation( $data, $product, $variation ) {
-		if ( is_admin() && ! wp_doing_ajax() ) {
+		if ( ( is_admin() && ! wp_doing_ajax() ) || ! self::is_reseller_mode() ) {
 			return $data;
 		}
 

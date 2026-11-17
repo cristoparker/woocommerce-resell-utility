@@ -390,10 +390,19 @@
 		cleanCartCheckoutBadges();
 		$(document).ajaxComplete(cleanCartCheckoutBadges);
 
-		// Real-time MutationObserver ensures even React/Vue/Blocks dynamic renders are caught immediately
-		if (window.MutationObserver && document.body) {
+		// MutationObserver catches React/Blocks renders; batched to one scan per frame and only on cart/checkout.
+		var isCartOrCheckout = $('body').hasClass('woocommerce-cart') || $('body').hasClass('woocommerce-checkout');
+		if (isCartOrCheckout && window.MutationObserver && document.body) {
+			var cleanScheduled = false;
 			var saveBadgeObserver = new MutationObserver(function() {
-				cleanCartCheckoutBadges();
+				if (cleanScheduled) {
+					return;
+				}
+				cleanScheduled = true;
+				window.requestAnimationFrame(function() {
+					cleanScheduled = false;
+					cleanCartCheckoutBadges();
+				});
 			});
 			saveBadgeObserver.observe(document.body, { childList: true, subtree: true });
 		}

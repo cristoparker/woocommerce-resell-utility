@@ -133,10 +133,13 @@ class WRU_Invoice_Email {
 	 * @return string
 	 */
 	public static function get_invoice_url( $order_id ) {
+		// The order key (not a nonce) authorises the link, so it keeps working from emails,
+		// which are generated under a different user session than the one opening them.
+		$order = wc_get_order( $order_id );
 		return add_query_arg( array(
 			'wru_action' => 'print_invoice',
 			'order_id'   => $order_id,
-			'nonce'      => wp_create_nonce( 'wru_print_invoice_' . $order_id ),
+			'key'        => $order ? $order->get_order_key() : '',
 		), home_url( '/' ) );
 	}
 
@@ -238,24 +241,29 @@ class WRU_Invoice_Email {
 		}
 
 		$order_id = isset( $_GET['order_id'] ) ? absint( $_GET['order_id'] ) : 0;
-		$nonce    = isset( $_GET['nonce'] ) ? sanitize_text_field( wp_unslash( $_GET['nonce'] ) ) : '';
+		$key      = isset( $_GET['key'] ) ? wc_clean( wp_unslash( $_GET['key'] ) ) : '';
+		$order    = $order_id ? wc_get_order( $order_id ) : false;
 
-		if ( ! $order_id || ! wp_verify_nonce( $nonce, 'wru_print_invoice_' . $order_id ) ) {
-			wp_die( esc_html__( 'অননুমোদিত অনুরোধ। অনুগ্রহ করে আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ) );
-		}
-
-		$order = wc_get_order( $order_id );
 		if ( ! $order ) {
-			wp_die( esc_html__( 'অর্ডার পাওয়া যায়নি।', 'woocommerce-resell-utility' ) );
+			wp_die( esc_html__( 'অর্ডার পাওয়া যায়নি।', 'woocommerce-resell-utility' ) );
 		}
 
-		// Check permission: Admin or order owner/reseller.
-		$current_user_id  = get_current_user_id();
-		$order_user_id    = (int) $order->get_customer_id();
-		$reseller_meta_id = (int) $order->get_meta( '_wru_reseller_user_id' );
+		// Store managers always; anyone else needs the order key, and for a registered
+		// customer's order must also be logged in as that customer.
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			$current_user_id = get_current_user_id();
+			$order_user_id   = (int) $order->get_customer_id();
+			$valid_key       = '' !== $key && hash_equals( $order->get_order_key(), $key );
 
-		if ( ! current_user_can( 'manage_woocommerce' ) && $current_user_id !== $order_user_id && ( ! $reseller_meta_id || $current_user_id !== $reseller_meta_id ) ) {
-			wp_die( esc_html__( 'আপনার এই ইনভয়েস দেখার অনুমতি নেই।', 'woocommerce-resell-utility' ) );
+			if ( ! $valid_key ) {
+				wp_die( esc_html__( 'অননুমোদিত অনুরোধ। অনুগ্রহ করে আবার চেষ্টা করুন।', 'woocommerce-resell-utility' ) );
+			}
+			if ( $order_user_id && $current_user_id !== $order_user_id ) {
+				if ( ! $current_user_id ) {
+					auth_redirect();
+				}
+				wp_die( esc_html__( 'আপনার এই ইনভয়েস দেখার অনুমতি নেই।', 'woocommerce-resell-utility' ) );
+			}
 		}
 
 		$inv_note = get_option( 'wru_invoice_footer_note', __( 'ডেলিভারির সময় পার্সেল চেক করে টাকা পরিশোধ করুন।', 'woocommerce-resell-utility' ) );

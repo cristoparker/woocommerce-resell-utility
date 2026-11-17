@@ -43,7 +43,7 @@
 }
 
 .wru-card-collection {
-	border-left: 4px solid #0284c7;
+	border-left: 4px solid #c2410c;
 }
 
 .wru-card-wholesale {
@@ -323,13 +323,13 @@ mark.order-status.status-wc-shipped {
 .wru-clickable-reseller:hover {
 	background: #f0f9ff !important;
 	border-color: #7dd3fc !important;
-	box-shadow: 0 2px 6px rgba(2, 132, 199, 0.12);
+	box-shadow: 0 2px 6px rgba(194,65,12, 0.12);
 	transform: translateY(-1px);
 }
 
 .wru-btn-export-pdf:hover {
-	background: #0369a1 !important;
-	border-color: #0284c7 !important;
-	box-shadow: 0 2px 5px rgba(2, 132, 199, 0.25);
+	background: #9a3412 !important;
+	border-color: #c2410c !important;
+	box-shadow: 0 2px 5px rgba(194,65,12, 0.25);
 }
 

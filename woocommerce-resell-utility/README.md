@@ -75,14 +75,19 @@ woocommerce-resell-utility/
 │   ├── class-wru-order-manager.php        # Cart, Order meta, HPOS, Admin courier box
 │   ├── class-wru-reseller-dashboard.php   # My Account Reseller Hub & payout settings
 │   ├── class-wru-invoice-email.php        # Printable packing slip invoice & email summary
-│   └── class-wru-admin-settings.php       # WooCommerce -> Resell Utility settings page
+│   ├── class-wru-admin-settings.php       # WooCommerce -> Resell Utility settings page
+│   ├── class-wru-inventory-db.php         # Inventory schema (install / upgrade / uninstall)
+│   ├── class-wru-inventory.php            # Stock movement log, purchases, suppliers, average cost
+│   └── class-wru-inventory-admin.php      # Inventory admin screens
 ├── assets/
 │   ├── css/
 │   │   ├── frontend.css                   # Grid alignment fix, badges, modals, dashboard
-│   │   └── admin.css                      # Admin order meta box & settings styling
+│   │   ├── admin.css                      # Admin order meta box & settings styling
+│   │   └── inventory.css                  # Inventory screens
 │   └── js/
 │       ├── frontend.js                    # Live profit math, variation sync, copy tools, Buy Now fix
-│       └── admin.js                       # One-click courier note copy
+│       ├── admin.js                       # One-click courier note copy
+│       └── inventory.js                   # Adjust dialog, purchase form math, product search
 ├── languages/                             # Translation directory
 ├── readme.txt                             # WordPress standard repository readme
 └── README.md                              # Complete documentation
@@ -100,11 +105,25 @@ woocommerce-resell-utility/
   - Invoices and parcel box labels display the **Reseller's Company / Shop Name** and hotline as the sender, ensuring wholesale supplier anonymity (never outputs wholesale store name).
   - Admins can print or download the packaging slip in one click directly from the Order Details page.
 
+### 11. Inventory (Stock, Purchases, Suppliers)
+- **Menu:** `Inventory` in wp-admin, with Stock, Purchases, New purchase, Stock movements and Suppliers.
+- **Stock:** tracked products with stock, average cost, reseller price, stock value and Low/Out badges; one-click adjustments (add, remove, set to) with a reason; CSV export.
+- **Purchases:** pick products or variations, quantity and unit cost, plus transport, labour, other costs and discount. Extra costs are spread over the lines by value into a landed cost, which updates each product's moving average cost. Saving adds the stock immediately.
+- **Movement log:** WooCommerce's own stock value stays the source of truth. Every change from any source (checkout, cancelled orders, refunds, the product editor, other plugins, purchases, adjustments) writes one row with the change and the stock after it.
+- **Delete rules:** a supplier with purchases can't be deleted. Deleting a purchase takes its stock back out and rolls back the average cost, and is refused if that stock has already been sold. Deleting a product removes its movement rows; purchase lines keep the product name and SKU.
+
+| Table | Purpose | Key relations |
+|---|---|---|
+| `{prefix}wru_suppliers` | Suppliers | — |
+| `{prefix}wru_purchases` | One row per supplier bill | `supplier_id` → suppliers, ON DELETE RESTRICT |
+| `{prefix}wru_purchase_items` | Purchase lines with landed cost | `purchase_id` → purchases, ON DELETE CASCADE; `product_id` set to NULL when the product is deleted |
+| `{prefix}wru_stock_movements` | Append-only stock log | rows removed with their product |
+
 ---
 
 ## Data Persistence & Long-Term Architecture Guarantee
 
-- **100% Native Architecture:** All plugin data is stored using official WordPress and WooCommerce data structures (`wp_posts`, `wp_postmeta`, `wp_usermeta`, `wp_options`, `wp_wc_orders_meta`). No unstable or non-standard custom tables are created.
+- **Native Architecture:** Reseller and order data is stored using official WordPress and WooCommerce data structures (`wp_posts`, `wp_postmeta`, `wp_usermeta`, `wp_options`, `wp_wc_orders_meta`). Only the Inventory module adds its own four tables (see section 11); they are kept on uninstall unless "Remove inventory data on uninstall" is ticked.
 - **Safe from Deactivation & Deletion:** Deactivating, disabling, or deleting the plugin **never drops or destroys** historical reseller earnings, order collection data, balance ledgers, or cashout history.
 - **Reinstall & Reload:** If the plugin is removed and re-installed in the future, all data immediately and automatically re-syncs and displays without data loss.
 - **Backup & Migration Ready:** Because standard tables are used, all data is automatically captured by standard WordPress backup tools (UpdraftPlus, Duplicator, All-in-One WP Migration, and standard mysqldump).
@@ -132,3 +151,23 @@ Navigate to **WordPress Admin -> WooCommerce -> Resell Utility**:
 - **Cart & Checkout Blocks:** Fully compatible
 - **PHP:** 7.4, 8.0, 8.1, 8.2, 8.3+
 
+
+## Normal store + reseller store on one site
+
+The plugin now runs a normal WooCommerce store and a reseller store side by side:
+
+- **Normal visitors and customers** see the stock WooCommerce prices, product pages, cart, checkout and My Account registration. None of the reseller features (market/reseller price blocks, selling-price input, Buy Now, product tools, reseller menus) are shown to them.
+- **Resellers register on their own page** (`[wru_reseller_registration]`, auto-created as *Reseller Registration* and linked from the My Account login screen). Applicants submit business details and NID photos; a logged-in customer can apply with their existing account. The admin approves them in *Resellers → Pending*.
+- **Approved resellers** get the reseller storefront: market + reseller prices, their own selling price with live profit, Buy Now / quick order, product tools and the Reseller Dashboard + Payouts in My Account.
+- **One order list.** Every order is a normal WooCommerce order. Orders placed by approved resellers also carry the resell data (collection amount, profit, packaging) and show a *Reseller* badge in the *অর্ডার ধরন* column; normal orders are left untouched and are not part of reseller balances.
+
+Note: orders created by earlier versions were all flagged as resell orders and stay that way.
+
+## Custom delivery charge per product / location
+
+In the product edit screen (*General* tab → *রিসেলিং কাস্টম খরচ*):
+
+- **কাস্টম ডেলিভারি চার্জ** – a delivery charge for this product in every location. Blank = the store's default WooCommerce delivery charge.
+- **লোকেশন ভিত্তিক ডেলিভারি চার্জ** – add rows of *country / state (district)* + charge. The customer's delivery address decides which applies: matching state, then matching country, then the product's all-locations charge, then the default.
+
+A cart ships as one parcel, so the delivery charge is the highest charge among its items; products with no custom charge count at the default rate. Free shipping and local pickup rates are never changed. Developers can adjust results with the `wru_custom_shipping_cost` and `wru_shipping_skip_methods` filters.
