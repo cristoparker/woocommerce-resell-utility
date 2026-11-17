@@ -4,7 +4,7 @@ Tags: woocommerce, dropshipping, reseller, resell utility, wholesale, courier, S
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 2.2.0
+Stable tag: 2.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,6 +57,9 @@ Inside each WooCommerce Order edit screen, in the "ড্রপশিপিং �
 Yes! Logged-in resellers can visit **My Account → রিসেলার ড্যাশবোর্ড** to see their earnings, order history, and save their payout method.
 
 == Changelog ==
+
+= 2.3.0 =
+* Design refresh: white mode with orange accent, pill buttons and rounded product cards across storefront, dashboard and admin.
 
 = 2.2.0 =
 * New: Inventory menu with Stock, Purchases, New purchase, Stock movements and Suppliers screens.
